@@ -1,6 +1,6 @@
 # PancreasPal API
 
-PancreasPal is an AI-powered clinical support assistant for newly diagnosed Type 1 diabetes patients and healthcare professionals. It combines patient-specific PDF history uploads, conversation memory, and Retrieval-Augmented Generation (RAG) against trusted clinical sources stored in an Amazon Bedrock Knowledge Base.
+PancreasPal is an AI-powered educational companion for newly diagnosed Type 1 diabetes patients. It combines conversation memory, personal health metrics and Retrieval-Augmented Generation (RAG) against trusted and vetted medical sources stored in an Amazon Bedrock Knowledge Base.
 
 ## Project Structure
 
