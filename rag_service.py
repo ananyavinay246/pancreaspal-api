@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -121,7 +120,6 @@ class RAGService:
 
     def _build_prompt(
         self,
-        patient_history: str,
         conversation_history: List[Dict[str, Any]],
         query: str,
         docs: List[Dict[str, Any]],
@@ -134,12 +132,10 @@ class RAGService:
             context_blocks.append(f"[Source {i}: {label}]\n{text}")
 
         context = "\n\n".join(context_blocks) if context_blocks else "(no library excerpts)"
-        history = (patient_history or "").strip() or "(not provided)"
 
         return (
             f"{GENERATION_INSTRUCTIONS}\n\n"
             f"Medical library context:\n{context}\n\n"
-            f"Static patient history:\n{history}\n\n"
             f"Ongoing conversation history:\n{self._format_conversation(conversation_history)}\n\n"
             f"Clinician's latest request:\n{query}\n"
         )
@@ -164,15 +160,11 @@ class RAGService:
 
     def process_query(
         self,
-        patient_history: str,
         conversation_history: List[Dict[str, Any]],
         query: str,
     ) -> Dict[str, Any]:
-        history_bytes = (patient_history or "").encode("utf-8")
         logging.info(
-            "Processing query. patient_history_chars=%s patient_history_sha256=%s conversation_turns=%s",
-            len(patient_history or ""),
-            hashlib.sha256(history_bytes).hexdigest()[:12],
+            "Processing query. conversation_turns=%s",
             len(conversation_history or []),
         )
 
@@ -184,7 +176,7 @@ class RAGService:
             if not usable_docs:
                 return {"answer": NO_CONTEXT_ANSWER, "sources": []}
 
-            prompt = self._build_prompt(patient_history, conversation_history or [], query, usable_docs)
+            prompt = self._build_prompt(conversation_history or [], query, usable_docs)
             answer = self._generate(prompt)
             sources = [self._source_from_result(doc) for doc in usable_docs]
 

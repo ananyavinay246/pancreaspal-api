@@ -1,8 +1,7 @@
 import os
-import uuid
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
@@ -25,7 +24,7 @@ def _cors_origins() -> list[str]:
 # Initialize the FastAPI app and services
 app = FastAPI(
     title="Pancreas Pal",
-    description="An AI-powered clinical co-pilot featuring PDF uploads and conversation memory.",
+    description="An AI-powered clinical co-pilot with conversation memory.",
     version="3.0.0"
 )
 
@@ -60,11 +59,6 @@ class RAGQueryResponse(BaseModel):
     answer: str
     sources: list[SourceDocument]
 
-class PDFUploadResponse(BaseModel):
-    patient_id: str
-    filename: str
-    info: str
-
 class AppendHistoryResponse(BaseModel):
     patient_id: str
     info: str
@@ -74,28 +68,6 @@ class AppendHistoryResponse(BaseModel):
 @app.get("/")
 def read_root():
     return {"status": "Medical RAG API is running."}
-
-@app.post("/api/v1/patients/upload")
-async def upload_patient_pdf(file: UploadFile = File(...)):
-    """Upload PDF"""
-    is_pdf_content_type = file.content_type in ("application/pdf", "application/octet-stream", "")
-    is_pdf_filename = file.filename and file.filename.lower().endswith(".pdf")
-    if not is_pdf_content_type and not is_pdf_filename:
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a PDF.")
-
-    patient_id = str(uuid.uuid4())
-    file_content = await file.read()
-
-    success = patient_service.save_pdf_as_text(patient_id, file_content)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to process PDF")
-
-    return {
-        "patient_id": patient_id,
-        "filename": file.filename,
-        "info": f"File processed. Use the patient_id for queries."
-    }
-
 
 @app.post("/api/v1/patients/{patient_id}/append", response_model=AppendHistoryResponse)
 async def append_to_history(patient_id: str, request: AppendHistoryRequest):
@@ -113,15 +85,10 @@ async def append_to_history(patient_id: str, request: AppendHistoryRequest):
 
 @app.post("/api/v1/patients/{patient_id}/query", response_model=RAGQueryResponse)
 async def query_patient_agent(patient_id: str, request: PatientQueryRequest):
-    """Query patient agent using Bedrock Knowledge Base retrieval and Claude."""
-    patient_history = patient_service.get_patient_history_text(patient_id)
-    if patient_history is None:
-        raise HTTPException(status_code=404, detail=f"Patient with ID '{patient_id}' not found.")
-
+    """Query using Bedrock Knowledge Base retrieval and Claude."""
     conversation_history = patient_service.get_conversation_history(patient_id)
 
     result = rag_service.process_query(
-        patient_history=patient_history,
         conversation_history=conversation_history,
         query=request.query
     )

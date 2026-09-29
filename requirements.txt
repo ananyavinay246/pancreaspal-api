@@ -2,8 +2,6 @@
 fastapi
 uvicorn[standard]
 python-dotenv
-python-multipart
 
 # AWS + RAG
 boto3
-pypdf

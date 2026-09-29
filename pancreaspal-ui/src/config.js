@@ -3,7 +3,6 @@ export const API_CONFIG = {
   BASE_URL: process.env.VITE_API_URL || 'http://localhost:8000',
   TIMEOUT: 30000,
   ENDPOINTS: {
-    UPLOAD_PDF: '/api/v1/patients/upload',
     QUERY: '/api/v1/patients/{patient_id}/query',
     APPEND_HISTORY: '/api/v1/patients/{patient_id}/append',
     GET_HISTORY: '/api/v1/patients/{patient_id}/history',
@@ -38,8 +37,6 @@ export const UI_CONFIG = {
   },
   MESSAGES: {
     LOADING: 'Processing your request...',
-    ERROR_GENERIC: 'An error occurred. Please try again.',
-    SUCCESS_UPLOAD: 'Patient file uploaded successfully',
-    ERROR_INVALID_PDF: 'Please upload a valid PDF file'
+    ERROR_GENERIC: 'An error occurred. Please try again.'
   }
 };

@@ -10,16 +10,6 @@ const apiClient = axios.create({
 });
 
 export const patientService = {
-  uploadPDF: async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return apiClient.post('/api/v1/patients/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-  },
-
   appendHistory: async (patientId, text) => {
     return apiClient.post(`/api/v1/patients/${patientId}/append`, {
       text

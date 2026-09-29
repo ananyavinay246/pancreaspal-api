@@ -1,5 +1,4 @@
 from datetime import datetime
-import io
 import logging
 import os
 import uuid
@@ -8,7 +7,6 @@ from pathlib import Path
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-import pypdf
 
 # --- Configuration ---
 PATIENT_FILES_DIR = Path("patient_files")
@@ -84,29 +82,6 @@ class PatientService:
         path = self._local_path(patient_id)
         path.parent.mkdir(exist_ok=True)
         path.write_text(text, encoding="utf-8")
-
-    @staticmethod
-    def _extract_pdf_text(file_content: bytes) -> str:
-        reader = pypdf.PdfReader(io.BytesIO(file_content))
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
-        return text
-
-    def save_pdf_as_text(self, patient_id: str, file_content: bytes) -> bool:
-        """Extracts text from an uploaded PDF and saves it as a .txt file."""
-        try:
-            text = self._extract_pdf_text(file_content)
-            self._write_history(patient_id, text)
-            logging.info(
-                "Successfully processed PDF for patient %s, text length: %s",
-                patient_id,
-                len(text),
-            )
-            return True
-        except Exception as e:
-            logging.error("Failed to process PDF for patient %s: %s", patient_id, e)
-            return False
 
     def get_patient_history_text(self, patient_id: str) -> str | None:
         """Reads the full text history from a patient's .txt file."""

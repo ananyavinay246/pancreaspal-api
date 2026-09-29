@@ -10,3 +10,4 @@ gold_standard_docs
 .venv/
 patient_files/
 Gold_Standard/
+pancreaspal-ui/node_modules/

@@ -6,7 +6,6 @@ load_dotenv()
 rag = RAGService()
 
 response = rag.process_query(
-    patient_history="Patient is a 45-year-old with type 1 diabetes.",
     conversation_history=[
         {
             "user_query": "Patient reports feeling shaky and sweaty.",
