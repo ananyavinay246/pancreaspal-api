@@ -1,38 +1,36 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
 
-* {
-  margin: 0;
-  padding: 0;
+@theme inline {
+  --color-background: #F8F5F1;
+  --color-foreground: #3D3830;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #3D3830;
+  --color-primary: #7FA68C;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #EAE6E1;
+  --color-secondary-foreground: #5C574F;
+  --color-muted: #F2EDE8;
+  --color-muted-foreground: #9B968E;
+  --color-accent: #D4956A;
+  --color-accent-foreground: #FFFFFF;
+  --color-dusty-blue: #8BA7BE;
+  --color-sage: #7FA68C;
+  --color-border: #E8E3DC;
+  --color-ring: #7FA68C;
+  --radius: 14px;
+  --font-sans: 'Nunito', system-ui, sans-serif;
+}
+
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+html, body {
+  background-color: #F8F5F1;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: #3D3830;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background-color: #f8fafc;
-  background-image:
-    radial-gradient(ellipse at 75% 0%, rgba(153, 210, 210, 0.22) 0%, transparent 55%),
-    radial-gradient(ellipse at 15% 85%, rgba(186, 218, 243, 0.18) 0%, transparent 50%);
-  background-attachment: fixed;
-}
-
-::-webkit-scrollbar {
-  width: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 99px;
-}
+::-webkit-scrollbar { width: 0; height: 0; }

@@ -22,6 +22,16 @@
       "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-conversations"
     },
     {
+      "Sid": "DynamoDBHealthMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-health-metrics"
+    },
+    {
       "Sid": "PatientS3",
       "Effect": "Allow",
       "Action": [

@@ -1,5 +1,4 @@
 from datetime import datetime
-import io
 import logging
 import os
 import uuid
@@ -8,7 +7,6 @@ from pathlib import Path
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-import pypdf
 
 # --- Configuration ---
 PATIENT_FILES_DIR = Path("patient_files")
@@ -85,28 +83,12 @@ class PatientService:
         path.parent.mkdir(exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
-    @staticmethod
-    def _extract_pdf_text(file_content: bytes) -> str:
-        reader = pypdf.PdfReader(io.BytesIO(file_content))
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
-        return text
-
-    def save_pdf_as_text(self, patient_id: str, file_content: bytes) -> bool:
-        """Extracts text from an uploaded PDF and saves it as a .txt file."""
-        try:
-            text = self._extract_pdf_text(file_content)
-            self._write_history(patient_id, text)
-            logging.info(
-                "Successfully processed PDF for patient %s, text length: %s",
-                patient_id,
-                len(text),
-            )
-            return True
-        except Exception as e:
-            logging.error("Failed to process PDF for patient %s: %s", patient_id, e)
-            return False
+    def create_patient_session(self) -> str:
+        """Create a patient record with empty chart text for chat and metrics."""
+        patient_id = str(uuid.uuid4())
+        self._write_history(patient_id, "")
+        logging.info("Created empty patient session %s", patient_id)
+        return patient_id
 
     def get_patient_history_text(self, patient_id: str) -> str | None:
         """Reads the full text history from a patient's .txt file."""
@@ -152,6 +134,27 @@ class PatientService:
             for item in items
         ]
         logging.info("Loaded %s conversation turn(s) for patient %s", len(turns), patient_id)
+        return turns
+
+    def list_conversation_turns(self, patient_id: str, limit: int = 50) -> list[dict]:
+        """List conversation turns newest first (for History UI)."""
+        if limit < 1 or limit > 100:
+            limit = 50
+        response = self._table.query(
+            KeyConditionExpression=Key("patient_id").eq(patient_id),
+            ScanIndexForward=False,
+            Limit=limit,
+        )
+        turns = []
+        for item in response.get("Items") or []:
+            turns.append(
+                {
+                    "turn_id": item.get("turn_id", ""),
+                    "timestamp": item.get("timestamp", ""),
+                    "user_query": item.get("user_query", ""),
+                    "agent_response": item.get("agent_response", ""),
+                }
+            )
         return turns
 
     def add_to_conversation_history(self, patient_id: str, user_query: str, agent_response: str) -> None:

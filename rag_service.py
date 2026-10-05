@@ -24,6 +24,24 @@ GENERATION_INSTRUCTIONS = (
     "lifestyle advice and not medical."
 )
 
+METRICS_MODE_INSTRUCTIONS = (
+    "You are a wellness companion helping someone review their own Type 1 diabetes logs. "
+    "Use the User logged metrics block for factual summaries only (counts, averages, dates, "
+    "patterns visible in the data). You may use the medical library for general definitions "
+    "and education, but do NOT apply library guidance to the user's specific numbers or logs. "
+    "Do NOT give recommendations, prescriptions, or action steps about insulin, food, exercise, "
+    "or mood. Do NOT say what they should do, whether values are good or bad for action, or "
+    "imply a care plan. If they ask for advice about their data, briefly summarize relevant "
+    "logs and suggest they use Learn mode for general education or talk with their care team. "
+    "Organize the response at a 6th grade reading level without emojis. Address the user "
+    "directly. Do not invent log entries or numbers not in the metrics block."
+)
+
+NO_METRICS_DATA_ANSWER = (
+    "You have not logged any health metrics yet. Use Log on the home screen to add readings, "
+    "meals, activity, or mood — then ask again to summarize your logs."
+)
+
 
 class RAGService:
     def __init__(self):
@@ -125,6 +143,8 @@ class RAGService:
         conversation_history: List[Dict[str, Any]],
         query: str,
         docs: List[Dict[str, Any]],
+        query_mode: str = "general",
+        metrics_context: Optional[str] = None,
     ) -> str:
         context_blocks = []
         for i, result in enumerate(docs, start=1):
@@ -135,13 +155,23 @@ class RAGService:
 
         context = "\n\n".join(context_blocks) if context_blocks else "(no library excerpts)"
         history = (patient_history or "").strip() or "(not provided)"
+        instructions = (
+            METRICS_MODE_INSTRUCTIONS if query_mode == "metrics" else GENERATION_INSTRUCTIONS
+        )
+        metrics_block = ""
+        if query_mode == "metrics" and (metrics_context or "").strip():
+            metrics_block = (
+                f"User logged metrics (factual source for summaries):\n"
+                f"{metrics_context.strip()}\n\n"
+            )
 
         return (
-            f"{GENERATION_INSTRUCTIONS}\n\n"
+            f"{instructions}\n\n"
+            f"{metrics_block}"
             f"Medical library context:\n{context}\n\n"
             f"Static patient history:\n{history}\n\n"
             f"Ongoing conversation history:\n{self._format_conversation(conversation_history)}\n\n"
-            f"Clinician's latest request:\n{query}\n"
+            f"User's latest request:\n{query}\n"
         )
 
     def _generate(self, prompt: str) -> str:
@@ -167,13 +197,18 @@ class RAGService:
         patient_history: str,
         conversation_history: List[Dict[str, Any]],
         query: str,
+        query_mode: str = "general",
+        metrics_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         history_bytes = (patient_history or "").encode("utf-8")
         logging.info(
-            "Processing query. patient_history_chars=%s patient_history_sha256=%s conversation_turns=%s",
+            "Processing query. query_mode=%s patient_history_chars=%s patient_history_sha256=%s "
+            "conversation_turns=%s metrics_context_chars=%s",
+            query_mode,
             len(patient_history or ""),
             hashlib.sha256(history_bytes).hexdigest()[:12],
             len(conversation_history or []),
+            len(metrics_context or ""),
         )
 
         try:
@@ -181,10 +216,24 @@ class RAGService:
             usable_docs = [doc for doc in docs if self._chunk_text(doc).strip()]
             logging.info("Bedrock Retrieve returned %s usable chunk(s).", len(usable_docs))
 
+            has_metrics = bool((metrics_context or "").strip())
             if not usable_docs:
-                return {"answer": NO_CONTEXT_ANSWER, "sources": []}
+                if query_mode == "metrics" and has_metrics:
+                    usable_docs = []
+                else:
+                    return {"answer": NO_CONTEXT_ANSWER, "sources": [], "query_mode": query_mode}
 
-            prompt = self._build_prompt(patient_history, conversation_history or [], query, usable_docs)
+            if query_mode == "metrics" and not usable_docs and not has_metrics:
+                return {"answer": NO_METRICS_DATA_ANSWER, "sources": [], "query_mode": query_mode}
+
+            prompt = self._build_prompt(
+                patient_history,
+                conversation_history or [],
+                query,
+                usable_docs,
+                query_mode=query_mode,
+                metrics_context=metrics_context,
+            )
             answer = self._generate(prompt)
             sources = [self._source_from_result(doc) for doc in usable_docs]
 
@@ -197,7 +246,7 @@ class RAGService:
                 seen.add(key)
                 unique_sources.append(source)
 
-            return {"answer": answer, "sources": unique_sources}
+            return {"answer": answer, "sources": unique_sources, "query_mode": query_mode}
         except (ClientError, BotoCoreError) as exc:
             logging.error("Bedrock RAG invocation failed: %s", exc)
             return {"error": f"Failed to process query: {exc}"}

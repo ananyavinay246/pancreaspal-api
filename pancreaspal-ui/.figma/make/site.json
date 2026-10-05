@@ -1,0 +1,11 @@
+{
+  "title": "Pancreas Pal",
+  "description": "Tracks glucose, insulin, nutrition, and exercise data for Type 1 diabetes users in a calm, wellness-focused interface to support self-reflection and education.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

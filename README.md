@@ -7,9 +7,12 @@ PancreasPal is an AI-powered educational companion for newly diagnosed Type 1 di
 - `main.py` - FastAPI backend application entry point
 - `ingest_knowledge_base.py` - Uploads `Gold_Standard.zip` PDFs to S3 and starts a Bedrock Knowledge Base ingestion job
 - `rag_service.py` - Retrieves from the Bedrock Knowledge Base and generates answers with Claude on Bedrock
-- `patient_service.py` - PDF ingestion, patient text on disk or S3, DynamoDB conversation memory
+- `patient_service.py` - Patient session markers on disk or S3, DynamoDB conversation memory
 - `Dockerfile` - Image for AWS App Runner
 - `create_conversation_table.py` - Creates the DynamoDB table used for chat turns
+- `create_health_metrics_table.py` - Creates the DynamoDB table for health metric logs
+- `health_metrics_service.py` - Validates and stores glucose/insulin/exercise/food/mood entries
+- `dashboard_service.py` - Aggregates metrics into Home/Insights payloads and caches `DASHBOARD#days=14` snapshots
 - `requirements.txt` - Backend Python dependencies
 - `.env.example` - Required AWS / Bedrock / DynamoDB environment variable names
 - `pancreaspal-ui/` - React frontend application
@@ -19,8 +22,8 @@ PancreasPal is an AI-powered educational companion for newly diagnosed Type 1 di
 ## Requirements
 
 - Python 3.12
-- Node.js 16+ (for frontend)
-- npm or yarn
+- Node.js 22+ (for frontend; see `pancreaspal-ui/.mise.toml`)
+- pnpm 10.x (via `corepack enable` or `npm install -g pnpm`)
 - An AWS account with Amazon Bedrock access
 - AWS credentials available to boto3 (environment variables, `AWS_PROFILE`, or `~/.aws/credentials`)
 
@@ -129,7 +132,7 @@ The backend will be available at:
 
 `http://127.0.0.1:8000`
 
-Startup fails if `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_MODEL_ID`, or `DYNAMODB_CONVERSATION_TABLE` is missing. A local FAISS folder is not required.
+Startup fails if `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_MODEL_ID`, `DYNAMODB_CONVERSATION_TABLE`, or `DYNAMODB_HEALTH_METRICS_TABLE` is missing. A local FAISS folder is not required.
 
 ## Frontend Setup
 
@@ -139,25 +142,27 @@ The React UI lives in `pancreaspal-ui/`.
 
 ```bash
 cd pancreaspal-ui
-npm install
+corepack enable
+pnpm install
 ```
 
 ### 2. Configure frontend environment
 
-Create a `.env.local` file inside `pancreaspal-ui/`:
+Create a `.env.local` file inside `pancreaspal-ui/` (see `.env.example`):
 
 ```env
-VITE_API_URL=http://localhost:8000
-VITE_APP_NAME=PancreasPal
+VITE_API_URL=http://127.0.0.1:8000
 ```
+
+Leave `VITE_API_URL` empty to use the Vite dev proxy to `127.0.0.1:8000`.
 
 ### 3. Start the frontend
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-The UI will usually run at `http://localhost:3000`.
+The dev server runs at `http://localhost:8443` by default (`vite.config.ts`).
 
 ## Quick Setup
 
@@ -177,7 +182,7 @@ Open a new terminal while keeping the old one running, then:
 
 ```bash
 cd pancreaspal-ui
-npm run dev
+pnpm dev
 ```
 
 ## Backend API Endpoints
@@ -194,26 +199,19 @@ Response:
 { "status": "Medical RAG API is running." }
 ```
 
-### Upload patient PDF
+### Create patient session
 
 ```http
-POST /api/v1/patients/upload
-Content-Type: multipart/form-data
+POST /api/v1/patients/init
 ```
-
-Form field:
-
-- `file` - a PDF document containing patient history
 
 Response:
 
 ```json
-{
-  "patient_id": "<uuid>",
-  "filename": "file.pdf",
-  "info": "File processed. Use the patient_id for queries."
-}
+{ "patient_id": "<uuid>" }
 ```
+
+The UI stores `patient_id` in the browser and uses it for chat, metrics, and dashboard APIs.
 
 ### Append patient history
 
@@ -238,8 +236,13 @@ Content-Type: application/json
 Body:
 
 ```json
-{ "query": "What is the best insulin dosing strategy for this patient?" }
+{
+  "query": "What is time in range?",
+  "query_mode": "general"
+}
 ```
+
+`query_mode` is optional: `general` (default, educational RAG) or `metrics` (includes a server-built summary of logged metrics; responses describe data only, not personal medical advice).
 
 Response example:
 
@@ -248,19 +251,92 @@ Response example:
   "answer": "...",
   "sources": [
     { "source": "s3://bucket/gold-standard/doc.pdf", "url": null, "title": "doc.pdf" }
-  ]
+  ],
+  "query_mode": "general"
 }
 ```
 
+### Health metric logs
+
+Create the table once (same region as `AWS_REGION`):
+
+```bash
+python create_health_metrics_table.py
+```
+
+Set `DYNAMODB_HEALTH_METRICS_TABLE=pancreaspal-health-metrics` in `.env`.
+
+**Create entry** (`metric_type`: `glucose`, `insulin`, `exercise`, `food`, `mood`):
+
+```http
+POST /api/v1/patients/{patient_id}/metrics
+Content-Type: application/json
+```
+
+Body example (glucose):
+
+```json
+{
+  "metric_type": "glucose",
+  "data": {
+    "value": "112",
+    "time": "08:30",
+    "context": "Fasting",
+    "note": ""
+  }
+}
+```
+
+Optional top-level `recorded_at` (ISO-8601). If omitted, the server uses `data.time` on today’s UTC date, or the current time.
+
+**List entries** (newest first):
+
+```http
+GET /api/v1/patients/{patient_id}/metrics?metric_type=glucose&limit=50
+```
+
+**Smoke test (local API on port 8000):**
+
+```powershell
+# Session + glucose log
+$base = "http://127.0.0.1:8000"
+$pid = (Invoke-RestMethod -Method POST -Uri "$base/api/v1/patients/init").patient_id
+$body = @{
+  metric_type = "glucose"
+  data = @{ value = "112"; time = "08:30"; context = "Fasting"; note = "" }
+} | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method POST -Uri "$base/api/v1/patients/$pid/metrics" -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "$base/api/v1/patients/$pid/metrics?metric_type=glucose"
+```
+
+**Dashboard (cached aggregates for Home / Insights UI):**
+
+Aggregates are computed from metric entries and stored in the same DynamoDB table as a snapshot item (`entry_id` = `DASHBOARD#days=14`). The snapshot is refreshed automatically after each successful `POST .../metrics`.
+
+```http
+GET /api/v1/patients/{patient_id}/dashboard?days=14
+GET /api/v1/patients/{patient_id}/dashboard?days=14&refresh=true
+```
+
+**Conversation history (for History page):**
+
+```http
+GET /api/v1/patients/{patient_id}/conversations?limit=50
+```
+
+Returns chat turns newest first (`timestamp`, `user_query`, `agent_response`).
+
+**End-to-end (local UI):** Run the API on port 8000 and `pnpm dev` in `pancreaspal-ui` (Vite proxies `/api` to the API). Log metrics from the FAB; Home and Insights read `/dashboard`. After redeploying App Runner, rebuild Amplify with `VITE_API_URL` set to your App Runner URL so production uses the same routes.
+
 ## How it works
 
-1. Upload a patient PDF. The backend extracts text and saves it to `patient_files/<patient_id>.txt` locally, or to S3 when `PATIENT_FILES_S3_BUCKET` is set.
-2. A query searches the Bedrock Knowledge Base with the clinician's question only (Gold Standard docs, not the patient chart).
-3. Retrieved library excerpts, patient history, and the last 20 DynamoDB chat turns are sent to Claude on Bedrock.
+1. The UI calls `POST /api/v1/patients/init` once per browser to get a `patient_id`. A placeholder chart file is created under `patient_files/<patient_id>.txt` locally, or in S3 when `PATIENT_FILES_S3_BUCKET` is set (used only to validate the session exists).
+2. A query searches the Bedrock Knowledge Base with the user's question (Gold Standard docs).
+3. Retrieved library excerpts, any optional appended notes, and the last 20 DynamoDB chat turns are sent to Claude on Bedrock.
 4. After a successful answer, the new turn is written to DynamoDB.
 5. The API returns the answer plus source citations for the UI.
 
-Patient charts are not written to the Knowledge Base. Chat turns persist in DynamoDB. On App Runner, patient text must live in S3.
+Patient session files are not written to the Knowledge Base. Chat turns persist in DynamoDB. On App Runner, session marker files must live in S3 when the bucket is configured.
 
 ## Deploy on AWS (App Runner + Amplify)
 
@@ -288,7 +364,7 @@ Copy the printed App Runner URL (`https://xxxx.us-east-1.awsapprunner.com`).
 
 ### 2. Host the UI on Amplify
 
-In the Amplify console, open app `pancreaspal-ui` and connect GitHub repo `pancreaspal-api` (app root `pancreaspal-ui`, build from [`amplify.yml`](amplify.yml)). Set the build environment variable:
+In the Amplify console, open app `pancreaspal-ui` and connect GitHub repo `pancreaspal-api` (app root `pancreaspal-ui`, build from [`amplify.yml`](amplify.yml) — **pnpm** via Corepack). Prefer a Node 22 build image if your Amplify app settings allow it. Set the build environment variable:
 
 ```text
 VITE_API_URL=https://<apprunner-url>
@@ -306,16 +382,26 @@ On the App Runner service, set:
 CORS_ORIGINS=https://main.d3cmc7tgu7fkco.amplifyapp.com
 ```
 
-`http://localhost:3000` is always allowed in code. Update `.env` `CORS_ORIGINS` the same way, then re-run the deploy script so the service picks it up.
+`http://localhost:3000`, `http://localhost:8443`, and `127.0.0.1` variants are always allowed in code. Set `CORS_ORIGINS` in repo-root `.env` to your Amplify URL, then re-run the deploy script so App Runner picks it up.
 
 `BEDROCK_DATA_SOURCE_ID` and `BEDROCK_S3_URI` are only needed for `ingest_knowledge_base.py` on a laptop, not on App Runner.
 
 The public Amplify URL has no login. Share it only with teammates; do not upload real PHI.
 
+### After you push (manual AWS checklist)
+
+1. Apply the latest [`deploy/apprunner-instance-policy.json`](deploy/apprunner-instance-policy.json) to IAM role `pancreaspal-apprunner-instance` (includes `dynamodb:GetItem` on the health-metrics table for dashboard cache).
+2. Ensure DynamoDB table `pancreaspal-health-metrics` exists (`python create_health_metrics_table.py` once per account/region).
+3. Push code, then run `deploy/create-apprunner-service.ps1` to rebuild the Docker image and update App Runner env (including `DYNAMODB_HEALTH_METRICS_TABLE` and `CORS_ORIGINS`).
+4. In Amplify, set `VITE_API_URL` to your App Runner URL and redeploy the frontend branch.
+5. Smoke test: `POST /init` → log a metric → `GET /dashboard` → chat in Learn and Summarize my logs modes.
+
 ## Notes and Troubleshooting
 
-- `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_MODEL_ID`, and `DYNAMODB_CONVERSATION_TABLE` must be present in `.env` before starting the backend.
+- `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_MODEL_ID`, `DYNAMODB_CONVERSATION_TABLE`, and `DYNAMODB_HEALTH_METRICS_TABLE` must be present in `.env` before starting the backend.
 - Create the conversation table with `python create_conversation_table.py` before the first query.
+- Create the health metrics table with `python create_health_metrics_table.py` before logging metrics.
+- `DYNAMODB_HEALTH_METRICS_TABLE` must be set in `.env` before starting the backend (with the other required vars).
 - Enable Bedrock model access in the same region as `AWS_REGION`.
 - If `ingest_knowledge_base.py` cannot find `Gold_Standard.zip`, place it in the repository root.
 - Check `CORS_ORIGINS` if the hosted frontend cannot call the API.
