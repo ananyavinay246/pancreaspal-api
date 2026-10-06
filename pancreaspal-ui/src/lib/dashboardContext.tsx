@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { getDashboard, PatientApiError } from './api/patientApi'
 import type { DashboardPayload } from './api/dashboardTypes'
-import { clearStoredPatientId, ensurePatientId } from './patientSession'
+import { clearStoredPatientId, ensurePatientId, isDemoPatientMode } from './patientSession'
 
 type DashboardContextValue = {
   dashboard: DashboardPayload | null
@@ -35,6 +35,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         return
       } catch (err) {
         if (err instanceof PatientApiError && err.status === 404) {
+          if (isDemoPatientMode()) {
+            throw new Error(
+              'Shared demo is not set up on the server. Run python seed_demo_patient.py against production AWS.',
+            )
+          }
           clearStoredPatientId()
           patientId = await ensurePatientId()
           const data = await getDashboard(patientId, 14, refresh)

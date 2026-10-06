@@ -90,6 +90,11 @@ class PatientService:
         logging.info("Created empty patient session %s", patient_id)
         return patient_id
 
+    def upsert_patient_history(self, patient_id: str, text: str) -> None:
+        """Write or replace chart text for a known patient id (e.g. shared demo seed)."""
+        self._write_history(patient_id, text)
+        logging.info("Upserted patient history for %s (%s bytes)", patient_id, len(text))
+
     def get_patient_history_text(self, patient_id: str) -> str | None:
         """Reads the full text history from a patient's .txt file."""
         if self._uses_s3():

@@ -250,7 +250,7 @@ Response example:
 {
   "answer": "...",
   "sources": [
-    { "source": "s3://bucket/gold-standard/doc.pdf", "url": null, "title": "doc.pdf" }
+    { "source": "s3://bucket/gold-standard/doc.pdf", "url": "https://...(presigned, 1h)", "title": "doc.pdf" }
   ],
   "query_mode": "general"
 }
@@ -330,13 +330,37 @@ Returns chat turns newest first (`timestamp`, `user_query`, `agent_response`).
 
 ## How it works
 
-1. The UI calls `POST /api/v1/patients/init` once per browser to get a `patient_id`. A placeholder chart file is created under `patient_files/<patient_id>.txt` locally, or in S3 when `PATIENT_FILES_S3_BUCKET` is set (used only to validate the session exists).
+1. By default the UI calls `POST /api/v1/patients/init` once per browser to get a `patient_id` (stored in `localStorage`). With **`VITE_DEMO_PATIENT_ID`** set at Amplify build time, every visitor uses the same shared demo id instead. A placeholder chart file is created under `patient_files/<patient_id>.txt` locally, or in S3 when `PATIENT_FILES_S3_BUCKET` is set (used only to validate the session exists).
 2. A query searches the Bedrock Knowledge Base with the user's question (Gold Standard docs).
 3. Retrieved library excerpts, any optional appended notes, and the last 20 DynamoDB chat turns are sent to Claude on Bedrock.
 4. After a successful answer, the new turn is written to DynamoDB.
 5. The API returns the answer plus source citations for the UI.
 
 Patient session files are not written to the Knowledge Base. Chat turns persist in DynamoDB. On App Runner, session marker files must live in S3 when the bucket is configured.
+
+### Shared demo (same history on every computer)
+
+Use a fixed patient id (`demo_patient.py` → `a1111111-1111-4111-8111-111111111111`) with synthetic metrics and sample chat history.
+
+1. From repo root, with production `.env` (S3 bucket + both DynamoDB tables), run once:
+
+   ```bash
+   python seed_demo_patient.py
+   ```
+
+   Re-running clears and re-seeds that id (metrics use rolling “last 14 days” from the run time).
+
+2. In **Amplify** build environment variables, add:
+
+   ```text
+   VITE_DEMO_PATIENT_ID=a1111111-1111-4111-8111-111111111111
+   ```
+
+   Redeploy the frontend. The “demo user” banner appears automatically when this variable is set.
+
+3. Optional local UI: create `pancreaspal-ui/.env.local` with the same `VITE_DEMO_PATIENT_ID` and point `VITE_API_URL` at your API.
+
+Anyone who opens the hosted app then sees the same dashboard, History, and Insights. New logs they add update the **shared** demo patient (fine for teammate demos; do not use for real PHI).
 
 ## Deploy on AWS (App Runner + Amplify)
 

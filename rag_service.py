@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -64,6 +65,7 @@ class RAGService:
         logging.info("Initializing RAG Service (Bedrock Knowledge Base)...")
         self.agent_runtime = boto3.client("bedrock-agent-runtime", region_name=self.region)
         self.runtime = boto3.client("bedrock-runtime", region_name=self.region)
+        self._s3 = boto3.client("s3", region_name=self.region)
         logging.info(
             "RAG Service initialized. region=%s knowledge_base_id=%s model_id=%s",
             self.region,
@@ -109,14 +111,50 @@ class RAGService:
 
         print("======================================\n", flush=True)
 
-    @staticmethod
-    def _source_from_result(result: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    def _presigned_url_for_s3(self, s3_uri: str) -> Optional[str]:
+        if not s3_uri.startswith("s3://"):
+            return None
+        parsed = urlparse(s3_uri)
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        if not bucket or not key:
+            return None
+        try:
+            return self._s3.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": bucket, "Key": key},
+                ExpiresIn=3600,
+            )
+        except (ClientError, BotoCoreError) as exc:
+            logging.warning("Could not presign %s: %s", s3_uri, exc)
+            return None
+
+    def _source_from_result(self, result: Dict[str, Any]) -> Dict[str, Optional[str]]:
         location = result.get("location") or {}
         s3_uri = (location.get("s3Location") or {}).get("uri")
         metadata = result.get("metadata") or {}
         source = s3_uri or metadata.get("x-amz-bedrock-kb-source-uri") or metadata.get("source")
         title = metadata.get("title") or (source.split("/")[-1] if source else None)
-        http_url = s3_uri if s3_uri and s3_uri.startswith("http") else None
+
+        http_url: Optional[str] = None
+        for candidate in (
+            metadata.get("url"),
+            metadata.get("source_url"),
+            metadata.get("x-amz-bedrock-kb-source-uri"),
+            source,
+            s3_uri,
+        ):
+            if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                http_url = candidate
+                break
+
+        if not http_url:
+            for candidate in (s3_uri, source):
+                if isinstance(candidate, str) and candidate.startswith("s3://"):
+                    http_url = self._presigned_url_for_s3(candidate)
+                    if http_url:
+                        break
+
         return {
             "source": source,
             "url": http_url,

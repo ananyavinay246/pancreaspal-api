@@ -32,6 +32,12 @@
       "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-health-metrics"
     },
     {
+      "Sid": "KnowledgeBaseDocsRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::pancreaspal-gold-standard/gold-standard/*"
+    },
+    {
       "Sid": "PatientS3List",
       "Effect": "Allow",
       "Action": ["s3:ListBucket"],

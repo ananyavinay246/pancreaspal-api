@@ -6,6 +6,7 @@ import {
   PatientApiError,
   type ConversationTurn,
   type QueryMode,
+  type SourceDocument,
 } from "./lib/api/patientApi"
 import type {
   GlucoseInsightsBlock,
@@ -23,7 +24,8 @@ import { ensurePatientId } from "./lib/patientSession"
 
 const SHOW_DEMO_BANNER =
   import.meta.env.VITE_SHOW_DEMO_BANNER === "true" ||
-  import.meta.env.VITE_SHOW_DEMO_BANNER === "1"
+  import.meta.env.VITE_SHOW_DEMO_BANNER === "1" ||
+  Boolean((import.meta.env.VITE_DEMO_PATIENT_ID ?? "").trim())
 
 const METRIC_REQUIRED: Record<string, string[]> = {
   glucose: ["value", "time", "context"],
@@ -1062,13 +1064,13 @@ function turnToConversation(turn: ConversationTurn, index: number): Conversation
 async function fetchChatAnswer(
   question: string,
   queryMode: QueryMode = "general",
-): Promise<{ text: string; sources?: string[] }> {
+): Promise<{ text: string; sources?: SourceDocument[] }> {
   try {
     const patientId = await ensurePatientId()
     const result = await queryPatient(patientId, question, queryMode)
-    const sources = result.sources
-      .map((s) => s.title || s.source)
-      .filter((label): label is string => Boolean(label))
+    const sources = result.sources.filter(
+      (s) => Boolean(s.title || s.source || s.url),
+    )
     return {
       text: result.answer,
       sources: sources.length > 0 ? sources : undefined,
@@ -1077,6 +1079,35 @@ async function fetchChatAnswer(
     console.error("Query failed:", err)
     return { text: CHAT_ERROR_MESSAGE }
   }
+}
+
+function ChatSourceLinks({ sources }: { sources: SourceDocument[] }) {
+  if (sources.length === 0) return null
+  return (
+    <p style={{ color: T.muted }} className="text-xs font-500 px-1 leading-snug">
+      Sources:{" "}
+      {sources.map((s, idx) => {
+        const label = s.title || s.source || "Document"
+        return (
+          <React.Fragment key={`${label}-${idx}`}>
+            {idx > 0 && " · "}
+            {s.url ? (
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: T.sage, textDecoration: "underline", fontWeight: 600 }}
+              >
+                {label}
+              </a>
+            ) : (
+              label
+            )}
+          </React.Fragment>
+        )
+      })}
+    </p>
+  )
 }
 
 // ─── History Page ─────────────────────────────────────────────────────────────
@@ -3503,7 +3534,7 @@ type ChatMessage = {
   role: "user" | "ai"
   text: string
   ts: string
-  sources?: string[]
+  sources?: SourceDocument[]
 }
 
 function ActiveChatPage({
@@ -3657,9 +3688,7 @@ function ActiveChatPage({
                 ))}
               </div>
               {msg.role === "ai" && msg.sources && msg.sources.length > 0 && (
-                <p style={{ color: T.muted }} className="text-xs font-500 px-1 leading-snug">
-                  Sources: {msg.sources.join(" · ")}
-                </p>
+                <ChatSourceLinks sources={msg.sources} />
               )}
               <span style={{ color: T.muted }} className="text-xs font-500 px-1">{msg.ts}</span>
             </div>
