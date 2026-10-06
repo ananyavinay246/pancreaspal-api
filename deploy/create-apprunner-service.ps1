@@ -15,9 +15,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 
 $Region = "us-east-1"
 $Account = "402561607513"
-$Repo = "pancreaspal-api"
+$Repo = "pancreaspal-v2"
 $ImageUri = "$Account.dkr.ecr.$Region.amazonaws.com/${Repo}:main"
-$ServiceName = "pancreaspal-api"
+$ServiceName = "pancreaspal-v2"
 $Bucket = "pancreaspal-patient-files-$Account"
 $InstanceRole = "arn:aws:iam::${Account}:role/pancreaspal-apprunner-instance"
 $AccessRole = "arn:aws:iam::${Account}:role/pancreaspal-apprunner-ecr-access"
