@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { getDashboard, PatientApiError } from './api/patientApi'
 import type { DashboardPayload } from './api/dashboardTypes'
-import { ensurePatientId } from './patientSession'
+import { clearStoredPatientId, ensurePatientId } from './patientSession'
 
 type DashboardContextValue = {
   dashboard: DashboardPayload | null
@@ -28,9 +28,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const refetch = useCallback(async (refresh = false) => {
     setError(null)
     try {
-      const patientId = await ensurePatientId()
-      const data = await getDashboard(patientId, 14, refresh)
-      setDashboard(data)
+      let patientId = await ensurePatientId()
+      try {
+        const data = await getDashboard(patientId, 14, refresh)
+        setDashboard(data)
+        return
+      } catch (err) {
+        if (err instanceof PatientApiError && err.status === 404) {
+          clearStoredPatientId()
+          patientId = await ensurePatientId()
+          const data = await getDashboard(patientId, 14, refresh)
+          setDashboard(data)
+          return
+        }
+        throw err
+      }
     } catch (err) {
       const msg =
         err instanceof PatientApiError

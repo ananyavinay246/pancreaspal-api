@@ -12,6 +12,11 @@ export function setStoredPatientId(patientId: string): void {
   localStorage.setItem(STORAGE_KEY, patientId)
 }
 
+export function clearStoredPatientId(): void {
+  localStorage.removeItem(STORAGE_KEY)
+  initPromise = null
+}
+
 /** Returns a patient_id with an empty chart record; reuses localStorage when present. */
 export async function ensurePatientId(): Promise<string> {
   const existing = getStoredPatientId()

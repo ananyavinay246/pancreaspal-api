@@ -32,6 +32,17 @@
       "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-health-metrics"
     },
     {
+      "Sid": "PatientS3List",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::pancreaspal-patient-files-402561607513",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["patients/*"]
+        }
+      }
+    },
+    {
       "Sid": "PatientS3",
       "Effect": "Allow",
       "Action": [

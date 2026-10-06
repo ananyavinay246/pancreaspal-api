@@ -100,7 +100,9 @@ class PatientService:
                 )
                 return response["Body"].read().decode("utf-8")
             except ClientError as exc:
-                if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+                code = exc.response.get("Error", {}).get("Code", "")
+                # Without s3:ListBucket, missing keys often surface as AccessDenied instead of NoSuchKey.
+                if code in {"NoSuchKey", "404", "NotFound", "AccessDenied"}:
                     return None
                 raise
 
