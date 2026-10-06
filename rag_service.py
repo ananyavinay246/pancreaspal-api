@@ -22,7 +22,7 @@ GENERATION_INSTRUCTIONS = (
     "6th grade reading level without emojis. Address the user directly. Do not use third-person "
     "pronouns for the user. Do not invent sources or clinical facts that are not in the context."
     "Express your answers in an educational format and only give suggestions, and word it as"
-    "lifestyle advice and not medical."
+    "lifestyle advice and not medical. Keep your answers short and concise."
 )
 
 METRICS_MODE_INSTRUCTIONS = (

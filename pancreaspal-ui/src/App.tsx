@@ -21,6 +21,7 @@ import type {
 } from "./lib/api/dashboardTypes"
 import { DashboardProvider, useDashboard } from "./lib/dashboardContext"
 import { ensurePatientId } from "./lib/patientSession"
+import { ChatMarkdown } from "./lib/ChatMarkdown"
 
 const SHOW_DEMO_BANNER =
   import.meta.env.VITE_SHOW_DEMO_BANNER === "true" ||
@@ -1498,44 +1499,25 @@ function HistoryPage() {
                   padding: "12px 16px",
                 }}
               >
-                {msg.text.split("\n\n").map((para, j) => (
-                  <p
-                    key={j}
-                    style={{ color: msg.role === "ai" ? T.fg : "white" }}
-                    className={`text-sm font-500 leading-relaxed ${
-                      j > 0 ? "mt-3" : ""
-                    }`}
-                  >
-                    {para.split("\n").map((line, k) => (
-                      <span key={k}>
-                        {line.startsWith("**") && line.endsWith("**") ? (
-                          <strong>{line.slice(2, -2)}</strong>
-                        ) : line.startsWith("• ") || line.match(/^\d\./) ? (
-                          <span
-                            style={{
-                              display: "block",
-                              paddingLeft: "0.75em",
-                              textIndent: "-0.75em",
-                            }}
-                          >
-                            {line}
-                          </span>
-                        ) : line.startsWith("---") ? (
-                          <span
-                            style={{
-                              display: "block",
-                              borderTop: "1px solid rgba(255,255,255,0.2)",
-                              margin: "8px 0",
-                            }}
-                          />
-                        ) : (
-                          line
-                        )}
-                        {k < para.split("\n").length - 1 && <br />}
-                      </span>
-                    ))}
-                  </p>
-                ))}
+                {msg.role === "ai" ? (
+                  <ChatMarkdown
+                    text={msg.text}
+                    color={T.fg}
+                    linkColor={T.sage}
+                  />
+                ) : (
+                  msg.text.split("\n\n").map((para, j) => (
+                    <p
+                      key={j}
+                      style={{ color: "white" }}
+                      className={`text-sm font-500 leading-relaxed ${
+                        j > 0 ? "mt-3" : ""
+                      }`}
+                    >
+                      {para}
+                    </p>
+                  ))
+                )}
               </div>
             </div>
           ))}
@@ -3680,12 +3662,19 @@ function ActiveChatPage({
                 boxShadow: msg.role === "ai" ? "0 1px 6px rgba(61,56,48,0.07)" : "0 2px 10px rgba(127,166,140,0.28)",
                 padding: "12px 16px",
               }}>
-                {msg.text.split("\n\n").map((para, j) => (
-                  <p key={j} style={{ color: msg.role === "ai" ? T.fg : "white" }}
-                    className={`text-sm font-500 leading-relaxed ${j > 0 ? "mt-3" : ""}`}>
-                    {para}
-                  </p>
-                ))}
+                {msg.role === "ai" ? (
+                  <ChatMarkdown text={msg.text} color={T.fg} linkColor={T.sage} />
+                ) : (
+                  msg.text.split("\n\n").map((para, j) => (
+                    <p
+                      key={j}
+                      style={{ color: "white" }}
+                      className={`text-sm font-500 leading-relaxed ${j > 0 ? "mt-3" : ""}`}
+                    >
+                      {para}
+                    </p>
+                  ))
+                )}
               </div>
               {msg.role === "ai" && msg.sources && msg.sources.length > 0 && (
                 <ChatSourceLinks sources={msg.sources} />
