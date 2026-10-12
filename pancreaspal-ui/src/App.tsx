@@ -420,14 +420,57 @@ const suggestions = [
   "How was my range this week?",
   "When do I usually go low?",
 ]
-function AskCard({ onSubmit }: { onSubmit: (q: string, mode: QueryMode) => void }) {
+
+type HomeAskMode = QueryMode | "doctor_visit"
+
+const ASK_MODE_OPTIONS: { id: HomeAskMode; label: string; shortLabel?: string }[] = [
+  { id: "general", label: "Learn" },
+  { id: "metrics", label: "Summarize my logs" },
+  {
+    id: "doctor_visit",
+    label: "Prepare for your doctor's visit",
+    shortLabel: "Doctor visit",
+  },
+]
+
+function askModeSubtitle(mode: HomeAskMode): string {
+  if (mode === "general") {
+    return "Learn from trusted sources — lifestyle-focused education"
+  }
+  if (mode === "metrics") {
+    return "Summarize your logs — facts only, not medical advice"
+  }
+  return "Get a visit-ready summary from your logs — coming soon"
+}
+
+function AskCard({
+  onSubmit,
+  onOpenDoctorVisit,
+}: {
+  onSubmit: (q: string, mode: QueryMode) => void
+  onOpenDoctorVisit: () => void
+}) {
   const [val, setVal] = useState("")
   const [focused, setFocused] = useState(false)
-  const [mode, setMode] = useState<QueryMode>("general")
+  const [mode, setMode] = useState<HomeAskMode>("general")
 
   const submit = () => {
+    if (mode === "doctor_visit") {
+      onOpenDoctorVisit()
+      return
+    }
     const q = val.trim()
-    if (q) { setVal(""); onSubmit(q, mode) }
+    if (q) {
+      setVal("")
+      onSubmit(q, mode)
+    }
+  }
+
+  const selectMode = (next: HomeAskMode) => {
+    setMode(next)
+    if (next === "doctor_visit") {
+      onOpenDoctorVisit()
+    }
   }
 
   return (
@@ -439,27 +482,28 @@ function AskCard({ onSubmit }: { onSubmit: (q: string, mode: QueryMode) => void 
         <div className="flex-1 min-w-0">
           <p style={{ color: T.fg }} className="text-sm font-700">Ask anything</p>
           <p style={{ color: T.muted }} className="text-xs font-500">
-            {mode === "general"
-              ? "Learn from trusted sources — lifestyle-focused education"
-              : "Summarize your logs — facts only, not medical advice"}
+            {askModeSubtitle(mode)}
           </p>
         </div>
       </div>
       <div
-        style={{ backgroundColor: T.bg, borderRadius: 10, padding: 3, display: "inline-flex", gap: 3, alignSelf: "flex-start" }}
+        style={{
+          backgroundColor: T.bg,
+          borderRadius: 10,
+          padding: 3,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 3,
+          alignSelf: "stretch",
+        }}
       >
-        {(
-          [
-            { id: "general" as const, label: "Learn" },
-            { id: "metrics" as const, label: "Summarize my logs" },
-          ] as const
-        ).map((opt) => {
+        {ASK_MODE_OPTIONS.map((opt) => {
           const active = mode === opt.id
           return (
             <button
               key={opt.id}
               type="button"
-              onClick={() => setMode(opt.id)}
+              onClick={() => selectMode(opt.id)}
               style={{
                 backgroundColor: active ? T.card : "transparent",
                 color: active ? T.fg : T.muted,
@@ -470,7 +514,7 @@ function AskCard({ onSubmit }: { onSubmit: (q: string, mode: QueryMode) => void 
               }}
               className="text-xs font-700 cursor-pointer border-0"
             >
-              {opt.label}
+              {opt.shortLabel ?? opt.label}
             </button>
           )
         })}
@@ -480,7 +524,12 @@ function AskCard({ onSubmit }: { onSubmit: (q: string, mode: QueryMode) => void 
         <input value={val} onChange={e => setVal(e.target.value)}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onKeyDown={e => e.key === "Enter" && submit()}
-          placeholder="Ask about your glucose, insulin, meals, or patterns…"
+          placeholder={
+            mode === "doctor_visit"
+              ? "Doctor visit prep is coming soon — open the page above"
+              : "Ask about your glucose, insulin, meals, or patterns…"
+          }
+          disabled={mode === "doctor_visit"}
           style={{ color: T.fg, backgroundColor: "transparent", outline: "none", flex: 1, fontFamily: "Nunito,sans-serif" }}
           className="text-sm font-500 placeholder:text-[#B8B2AA]" />
         <button onClick={submit}
@@ -831,12 +880,65 @@ function DemoBanner() {
 }
 
 // ─── Home Page ────────────────────────────────────────────────────────────────
+function DoctorVisitPlaceholderPage({ onBack }: { onBack: () => void }) {
+  return (
+    <main className="max-w-2xl mx-auto px-8 py-16 flex flex-col items-center text-center gap-6">
+      <DemoBanner />
+      <div
+        style={{
+          backgroundColor: T.card,
+          borderRadius: 20,
+          boxShadow: "0 2px 16px rgba(61,56,48,0.08)",
+          border: `1px solid ${T.border}`,
+        }}
+        className="w-full px-8 py-12 flex flex-col items-center gap-4"
+      >
+        <span
+          style={{ backgroundColor: T.lavender + "25", fontSize: 28 }}
+          className="w-14 h-14 rounded-2xl flex items-center justify-center"
+        >
+          🩺
+        </span>
+        <h1 style={{ color: T.fg }} className="text-2xl font-800 tracking-tight">
+          Prepare for your doctor&apos;s visit
+        </h1>
+        <p style={{ color: T.muted }} className="text-sm font-500 leading-relaxed max-w-md">
+          We&apos;re building a visit-ready summary from your logs and questions. This feature is
+          in progress — check back soon.
+        </p>
+        <p
+          style={{ color: T.fgSoft, backgroundColor: T.bg, border: `1px dashed ${T.border}` }}
+          className="text-xs font-700 uppercase tracking-wide px-4 py-2 rounded-full"
+        >
+          In progress implementation
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            backgroundColor: T.sage,
+            color: "white",
+            borderRadius: 12,
+            padding: "10px 20px",
+            fontFamily: "Nunito,sans-serif",
+          }}
+          className="text-sm font-700 cursor-pointer border-0 mt-2"
+        >
+          Back to Home
+        </button>
+      </div>
+    </main>
+  )
+}
+
 function HomePage({
   onAsk,
   onInsight,
+  onOpenDoctorVisit,
 }: {
   onAsk: (q: string, mode: QueryMode) => void
   onInsight: (section: string) => void
+  onOpenDoctorVisit: () => void
 }) {
   const { dashboard, loading } = useDashboard()
   const home = dashboard?.home
@@ -883,7 +985,37 @@ function HomePage({
       </div>
 
       {/* ── AI Ask Card ───────────────────────────────────────────────── */}
-      <AskCard onSubmit={onAsk} />
+      <AskCard onSubmit={onAsk} onOpenDoctorVisit={onOpenDoctorVisit} />
+
+      <button
+        type="button"
+        onClick={onOpenDoctorVisit}
+        style={{
+          backgroundColor: T.card,
+          border: `1px solid ${T.border}`,
+          borderRadius: 16,
+          boxShadow: "0 1px 8px rgba(61,56,48,0.06)",
+        }}
+        className="w-full px-5 py-4 flex items-center gap-4 text-left cursor-pointer hover:border-[#C8C1B8] transition-colors"
+      >
+        <span
+          style={{ backgroundColor: T.lavender + "22" }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center text-lg shrink-0"
+        >
+          🩺
+        </span>
+        <div className="flex-1 min-w-0">
+          <p style={{ color: T.fg }} className="text-sm font-700">
+            Prepare for your doctor&apos;s visit
+          </p>
+          <p style={{ color: T.muted }} className="text-xs font-500 mt-0.5">
+            Visit prep from your logs — in progress
+          </p>
+        </div>
+        <span style={{ color: T.sage }} className="text-sm font-800 shrink-0">
+          Open →
+        </span>
+      </button>
 
       {/* ── Metric Cards + FAB ────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
@@ -3825,6 +3957,11 @@ function AppShell() {
     setPage("Chat")
   }
 
+  const handleOpenDoctorVisit = () => {
+    setChatQuery(null)
+    setPage("DoctorVisit")
+  }
+
   const handleNavChange = (p: string) => {
     setChatQuery(null)
     if (p !== "Insights") setInsightSection(undefined)
@@ -3838,10 +3975,22 @@ function AppShell() {
 
   const showFooter = page !== "History" && page !== "Chat"
 
+  const navHighlight =
+    page === "Chat" || page === "DoctorVisit" ? "Home" : page
+
   return (
     <div style={{ backgroundColor: T.bg, fontFamily: "Nunito, system-ui, sans-serif", minHeight: "100dvh" }}>
-      <Nav page={page === "Chat" ? "Home" : page} setPage={handleNavChange} />
-      {page === "Home"     && <HomePage onAsk={handleAsk} onInsight={handleInsight} />}
+      <Nav page={navHighlight} setPage={handleNavChange} />
+      {page === "Home" && (
+        <HomePage
+          onAsk={handleAsk}
+          onInsight={handleInsight}
+          onOpenDoctorVisit={handleOpenDoctorVisit}
+        />
+      )}
+      {page === "DoctorVisit" && (
+        <DoctorVisitPlaceholderPage onBack={() => handleNavChange("Home")} />
+      )}
       {page === "Chat" && chatQuery && (
         <ActiveChatPage
           key={chatQuery}
