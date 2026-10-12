@@ -905,6 +905,11 @@ function DoctorVisitPlaceholderPage({ onBack }: { onBack: () => void }) {
         <p style={{ color: T.muted }} className="text-sm font-500 leading-relaxed max-w-md">
           We&apos;re building a visit-ready summary from your logs and questions. This feature is
           in progress — check back soon.
+          The following features will be available:
+          - Suggested follow-up questions based on conversation history since your last visit.
+          - Your historical health data trends to print out to share with your doctor.
+          - Practice mode with the AI acting as a doctor for you to practice asking questions.
+
         </p>
         <p
           style={{ color: T.fgSoft, backgroundColor: T.bg, border: `1px dashed ${T.border}` }}
