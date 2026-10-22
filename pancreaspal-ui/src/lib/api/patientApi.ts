@@ -21,10 +21,20 @@ export type SourceDocument = {
 
 export type QueryMode = 'general' | 'metrics'
 
+export type ResponseDetail = 'concise' | 'detailed'
+
 export type QueryResponse = {
   answer: string
   sources: SourceDocument[]
   query_mode?: QueryMode
+  turn_id?: string | null
+}
+
+export type ExpandTurnResponse = {
+  answer: string
+  sources: SourceDocument[]
+  query_mode?: QueryMode
+  turn_id: string
 }
 
 export class PatientApiError extends Error {
@@ -68,14 +78,52 @@ export async function queryPatient(
   patientId: string,
   query: string,
   queryMode: QueryMode = 'general',
+  responseDetail: ResponseDetail = 'concise',
 ): Promise<QueryResponse> {
   const res = await fetch(apiUrl(`/api/v1/patients/${encodeURIComponent(patientId)}/query`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, query_mode: queryMode }),
+    body: JSON.stringify({
+      query,
+      query_mode: queryMode,
+      response_detail: responseDetail,
+    }),
   })
   if (!res.ok) throw await parseError(res)
   return (await res.json()) as QueryResponse
+}
+
+export async function declineConversationDetail(
+  patientId: string,
+  turnId: string,
+): Promise<{ turn_id: string; detail_offer_answer: 'no' }> {
+  const res = await fetch(
+    apiUrl(
+      `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/decline-detail`,
+    ),
+    { method: 'POST' },
+  )
+  if (!res.ok) throw await parseError(res)
+  return (await res.json()) as { turn_id: string; detail_offer_answer: 'no' }
+}
+
+export async function expandConversationTurn(
+  patientId: string,
+  turnId: string,
+  queryMode: QueryMode = 'general',
+): Promise<ExpandTurnResponse> {
+  const res = await fetch(
+    apiUrl(
+      `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/expand`,
+    ),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query_mode: queryMode }),
+    },
+  )
+  if (!res.ok) throw await parseError(res)
+  return (await res.json()) as ExpandTurnResponse
 }
 
 export async function createMetric(

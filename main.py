@@ -61,6 +61,10 @@ class PatientQueryRequest(BaseModel):
         default="general",
         description="general: educational RAG chat; metrics: summarize logged data without personal advice.",
     )
+    response_detail: Literal["concise", "detailed"] = Field(
+        default="concise",
+        description="concise: brief first answer; detailed: in-depth (normally via expand endpoint).",
+    )
 
 class AppendHistoryRequest(BaseModel):
     text: str = Field(..., description="The new text note to append to the patient's history.")
@@ -74,6 +78,21 @@ class RAGQueryResponse(BaseModel):
     answer: str
     sources: list[SourceDocument]
     query_mode: Literal["general", "metrics"] = "general"
+    turn_id: str | None = None
+
+
+class ExpandTurnRequest(BaseModel):
+    query_mode: Literal["general", "metrics"] = Field(
+        default="general",
+        description="Must match the mode used for the original question.",
+    )
+
+
+class ExpandTurnResponse(BaseModel):
+    answer: str
+    sources: list[SourceDocument]
+    query_mode: Literal["general", "metrics"] = "general"
+    turn_id: str
 
 class AppendHistoryResponse(BaseModel):
     patient_id: str
@@ -265,6 +284,8 @@ class ConversationTurn(BaseModel):
     timestamp: str
     user_query: str
     agent_response: str
+    agent_response_detail: str | None = None
+    detail_offer_answer: Literal["yes", "no"] | None = None
 
 
 class ListConversationsResponse(BaseModel):
@@ -315,8 +336,12 @@ async def query_patient_agent(patient_id: str, request: PatientQueryRequest):
         metrics_context, has_metrics = dashboard_service.build_metrics_context(patient_id, days=14)
         if not has_metrics:
             answer = NO_METRICS_DATA_ANSWER
-            patient_service.add_to_conversation_history(patient_id, request.query, answer)
-            return RAGQueryResponse(answer=answer, sources=[], query_mode="metrics")
+            turn_id = patient_service.add_to_conversation_history(
+                patient_id, request.query, answer
+            )
+            return RAGQueryResponse(
+                answer=answer, sources=[], query_mode="metrics", turn_id=turn_id
+            )
 
     result = rag_service.process_query(
         patient_history=patient_history,
@@ -324,18 +349,114 @@ async def query_patient_agent(patient_id: str, request: PatientQueryRequest):
         query=request.query,
         query_mode=request.query_mode,
         metrics_context=metrics_context,
+        response_detail=request.response_detail,
     )
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
 
-    patient_service.add_to_conversation_history(patient_id, request.query, result["answer"])
+    turn_id = patient_service.add_to_conversation_history(
+        patient_id,
+        request.query,
+        result["answer"],
+        rag_prompt_context=result.get("rag_prompt_context"),
+    )
 
     return RAGQueryResponse(
         answer=result["answer"],
         sources=result.get("sources") or [],
         query_mode=result.get("query_mode", request.query_mode),
+        turn_id=turn_id,
     )
+
+
+@app.post(
+    "/api/v1/patients/{patient_id}/conversations/{turn_id}/expand",
+    response_model=ExpandTurnResponse,
+)
+async def expand_conversation_turn(
+    patient_id: str,
+    turn_id: str,
+    request: ExpandTurnRequest,
+):
+    """Generate a detailed follow-up for an existing concise turn."""
+    _require_patient(patient_id)
+    turn = patient_service.get_turn(patient_id, turn_id)
+    if turn is None:
+        raise HTTPException(status_code=404, detail="Conversation turn not found.")
+
+    existing_detail = turn.get("agent_response_detail")
+    if existing_detail:
+        return ExpandTurnResponse(
+            answer=existing_detail,
+            sources=[],
+            query_mode=request.query_mode,
+            turn_id=turn_id,
+        )
+
+    stored_context = turn.get("rag_prompt_context")
+    if stored_context:
+        result = rag_service.expand_from_stored_context(
+            stored_context,
+            prior_answer=turn["agent_response"],
+        )
+    else:
+        logging.warning(
+            "Expand without stored RAG context for turn %s; falling back to full retrieve.",
+            turn_id,
+        )
+        patient_history = patient_service.get_patient_history_text(patient_id)
+        if patient_history is None:
+            raise HTTPException(status_code=404, detail=f"Patient with ID '{patient_id}' not found.")
+
+        conversation_history = patient_service.get_conversation_history(patient_id)
+        metrics_context: str | None = None
+        if request.query_mode == "metrics":
+            metrics_context, has_metrics = dashboard_service.build_metrics_context(
+                patient_id, days=14
+            )
+            if not has_metrics:
+                raise HTTPException(
+                    status_code=422,
+                    detail="No metrics available to expand this summary.",
+                )
+
+        result = rag_service.process_query(
+            patient_history=patient_history,
+            conversation_history=conversation_history,
+            query=turn["user_query"],
+            query_mode=request.query_mode,
+            metrics_context=metrics_context,
+            response_detail="detailed",
+            prior_answer=turn["agent_response"],
+        )
+
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    patient_service.set_turn_detail(patient_id, turn_id, result["answer"])
+
+    return ExpandTurnResponse(
+        answer=result["answer"],
+        sources=result.get("sources") or [],
+        query_mode=result.get("query_mode", request.query_mode),
+        turn_id=turn_id,
+    )
+
+
+@app.post("/api/v1/patients/{patient_id}/conversations/{turn_id}/decline-detail")
+async def decline_conversation_detail(patient_id: str, turn_id: str):
+    """Record that the user declined the optional in-depth follow-up."""
+    _require_patient(patient_id)
+    turn = patient_service.get_turn(patient_id, turn_id)
+    if turn is None:
+        raise HTTPException(status_code=404, detail="Conversation turn not found.")
+    if turn.get("agent_response_detail"):
+        raise HTTPException(status_code=409, detail="Detail was already generated for this turn.")
+    if turn.get("detail_offer_answer") == "no":
+        return {"turn_id": turn_id, "detail_offer_answer": "no"}
+    patient_service.set_detail_offer_declined(patient_id, turn_id)
+    return {"turn_id": turn_id, "detail_offer_answer": "no"}
 
 
 @app.post(

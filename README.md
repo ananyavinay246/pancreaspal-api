@@ -238,11 +238,14 @@ Body:
 ```json
 {
   "query": "What is time in range?",
-  "query_mode": "general"
+  "query_mode": "general",
+  "response_detail": "concise"
 }
 ```
 
 `query_mode` is optional: `general` (default, educational RAG) or `metrics` (includes a server-built summary of logged metrics; responses describe data only, not personal medical advice).
+
+`response_detail` is optional: `concise` (default, brief answer) or `detailed` (normally used via the expand endpoint below).
 
 Response example:
 
@@ -252,9 +255,23 @@ Response example:
   "sources": [
     { "source": "s3://bucket/gold-standard/doc.pdf", "url": "https://...(presigned, 1h)", "title": "doc.pdf" }
   ],
-  "query_mode": "general"
+  "query_mode": "general",
+  "turn_id": "TURN#2026-01-01T12:00:00#uuid"
 }
 ```
+
+**Optional in-depth follow-up** (same DynamoDB turn; UI shows concise first, then “more detail” on request):
+
+```http
+POST /api/v1/patients/{patient_id}/conversations/{turn_id}/expand
+Content-Type: application/json
+```
+
+```json
+{ "query_mode": "general" }
+```
+
+Returns `{ "answer", "sources", "query_mode", "turn_id" }`. If detail was already generated, returns the stored detailed answer (idempotent). `GET .../conversations` includes optional `agent_response_detail` on each turn.
 
 ### Health metric logs
 

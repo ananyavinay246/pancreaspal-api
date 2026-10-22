@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import logging
 import os
 import uuid
@@ -154,27 +155,84 @@ class PatientService:
         )
         turns = []
         for item in response.get("Items") or []:
-            turns.append(
-                {
-                    "turn_id": item.get("turn_id", ""),
-                    "timestamp": item.get("timestamp", ""),
-                    "user_query": item.get("user_query", ""),
-                    "agent_response": item.get("agent_response", ""),
-                }
-            )
+            turn = {
+                "turn_id": item.get("turn_id", ""),
+                "timestamp": item.get("timestamp", ""),
+                "user_query": item.get("user_query", ""),
+                "agent_response": item.get("agent_response", ""),
+            }
+            detail = item.get("agent_response_detail")
+            if detail:
+                turn["agent_response_detail"] = detail
+            offer = item.get("detail_offer_answer")
+            if offer:
+                turn["detail_offer_answer"] = offer
+            turns.append(turn)
         return turns
 
-    def add_to_conversation_history(self, patient_id: str, user_query: str, agent_response: str) -> None:
-        """Persist a user/assistant turn in DynamoDB."""
+    def get_turn(self, patient_id: str, turn_id: str) -> dict | None:
+        """Load a single conversation turn by id."""
+        response = self._table.get_item(Key={"patient_id": patient_id, "turn_id": turn_id})
+        item = response.get("Item")
+        if not item:
+            return None
+        turn = {
+            "turn_id": item.get("turn_id", ""),
+            "timestamp": item.get("timestamp", ""),
+            "user_query": item.get("user_query", ""),
+            "agent_response": item.get("agent_response", ""),
+        }
+        detail = item.get("agent_response_detail")
+        if detail:
+            turn["agent_response_detail"] = detail
+        offer = item.get("detail_offer_answer")
+        if offer:
+            turn["detail_offer_answer"] = offer
+        raw_context = item.get("rag_prompt_context")
+        if isinstance(raw_context, str) and raw_context.strip():
+            try:
+                turn["rag_prompt_context"] = json.loads(raw_context)
+            except json.JSONDecodeError:
+                logging.warning("Invalid rag_prompt_context JSON for turn %s", turn_id)
+        return turn
+
+    def set_turn_detail(self, patient_id: str, turn_id: str, detail_text: str) -> None:
+        """Attach an expanded assistant reply to an existing turn."""
+        self._table.update_item(
+            Key={"patient_id": patient_id, "turn_id": turn_id},
+            UpdateExpression="SET agent_response_detail = :detail, detail_offer_answer = :yes",
+            ExpressionAttributeValues={":detail": detail_text, ":yes": "yes"},
+        )
+        logging.info("Stored detail expansion for turn %s patient %s", turn_id, patient_id)
+
+    def set_detail_offer_declined(self, patient_id: str, turn_id: str) -> None:
+        """Record that the user declined the optional detail offer."""
+        self._table.update_item(
+            Key={"patient_id": patient_id, "turn_id": turn_id},
+            UpdateExpression="SET detail_offer_answer = :no",
+            ExpressionAttributeValues={":no": "no"},
+        )
+        logging.info("Stored detail offer decline for turn %s patient %s", turn_id, patient_id)
+
+    def add_to_conversation_history(
+        self,
+        patient_id: str,
+        user_query: str,
+        agent_response: str,
+        rag_prompt_context: dict | None = None,
+    ) -> str:
+        """Persist a user/assistant turn in DynamoDB. Returns turn_id."""
         timestamp = datetime.now().isoformat()
         turn_id = f"TURN#{timestamp}#{uuid.uuid4()}"
-        self._table.put_item(
-            Item={
-                "patient_id": patient_id,
-                "turn_id": turn_id,
-                "user_query": user_query,
-                "agent_response": agent_response,
-                "timestamp": timestamp,
-            }
-        )
+        item: dict = {
+            "patient_id": patient_id,
+            "turn_id": turn_id,
+            "user_query": user_query,
+            "agent_response": agent_response,
+            "timestamp": timestamp,
+        }
+        if rag_prompt_context:
+            item["rag_prompt_context"] = json.dumps(rag_prompt_context, ensure_ascii=False)
+        self._table.put_item(Item=item)
         logging.info("Stored conversation turn for patient %s", patient_id)
+        return turn_id

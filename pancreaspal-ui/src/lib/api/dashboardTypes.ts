@@ -166,4 +166,6 @@ export type ConversationTurn = {
   timestamp: string
   user_query: string
   agent_response: string
+  agent_response_detail?: string | null
+  detail_offer_answer?: 'yes' | 'no' | null
 }

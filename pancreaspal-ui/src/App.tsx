@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react"
 import {
   queryPatient,
+  expandConversationTurn,
+  declineConversationDetail,
   createMetric,
   listConversations,
   PatientApiError,
@@ -22,6 +24,14 @@ import type {
 import { DashboardProvider, useDashboard } from "./lib/dashboardContext"
 import { ensurePatientId } from "./lib/patientSession"
 import { ChatMarkdown } from "./lib/ChatMarkdown"
+import { DetailThreadBanner, type DetailChoice } from "./lib/DetailThreadBanner"
+import {
+  CHAT_ERROR_MESSAGE,
+  isDetailEligible,
+  type ChatAnswerResult,
+  type PendingDetailOffer,
+  coalesceInitialChatQuery,
+} from "./lib/chatDetail"
 
 const SHOW_DEMO_BANNER =
   import.meta.env.VITE_SHOW_DEMO_BANNER === "true" ||
@@ -35,9 +45,6 @@ const METRIC_REQUIRED: Record<string, string[]> = {
   food: ["description", "carbs", "meal", "time"],
   mood: ["mood"],
 }
-
-const CHAT_ERROR_MESSAGE =
-  "Sorry, I could not get a response. Please try again."
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -1144,7 +1151,50 @@ function HomePage({
 }
 
 // ─── Conversation data ────────────────────────────────────────────────────────
-type Message = { role: "user" | "ai"; text: string }
+type Message = {
+  role: "user" | "ai" | "detail-offer"
+  text: string
+  sources?: SourceDocument[]
+  variant?: "concise" | "detailed"
+  turnId?: string
+  detailChoice?: DetailChoice
+}
+
+function detailChoiceFromTurn(turn: ConversationTurn): DetailChoice | null {
+  if (turn.detail_offer_answer === "no") return "no"
+  if (turn.detail_offer_answer === "yes" || turn.agent_response_detail) return "yes"
+  return null
+}
+
+function detailOfferMessageFromTurn(turn: ConversationTurn): Message | null {
+  const choice = detailChoiceFromTurn(turn)
+  if (!choice || choice === "pending") return null
+  return {
+    role: "detail-offer",
+    text: "",
+    detailChoice: choice,
+    turnId: turn.turn_id,
+  }
+}
+
+function markDetailOfferResolved<T extends Message>(
+  messages: T[],
+  turnId: string,
+  choice: Exclude<DetailChoice, "pending">,
+): T[] {
+  return messages.map((m) =>
+    m.role === "detail-offer" && m.turnId === turnId && m.detailChoice === "pending"
+      ? { ...m, detailChoice: choice }
+      : m,
+  )
+}
+
+function stripPendingDetailOffers<T extends Message>(messages: T[]): T[] {
+  return messages.filter(
+    (m) => !(m.role === "detail-offer" && m.detailChoice === "pending"),
+  )
+}
+
 type Conversation = {
   id: string
   title: string
@@ -1194,7 +1244,19 @@ function turnToConversation(turn: ConversationTurn, index: number): Conversation
     tag: { label: "Chat", variant: "neutral" },
     messages: [
       { role: "user", text: turn.user_query },
-      { role: "ai", text: turn.agent_response },
+      {
+        role: "ai",
+        text: turn.agent_response,
+        turnId: turn.turn_id,
+        variant: "concise",
+      },
+      ...((): Message[] => {
+        const offer = detailOfferMessageFromTurn(turn)
+        return offer ? [offer] : []
+      })(),
+      ...(turn.agent_response_detail
+        ? [{ role: "ai" as const, text: turn.agent_response_detail, variant: "detailed" as const }]
+        : []),
     ],
   }
 }
@@ -1202,20 +1264,38 @@ function turnToConversation(turn: ConversationTurn, index: number): Conversation
 async function fetchChatAnswer(
   question: string,
   queryMode: QueryMode = "general",
-): Promise<{ text: string; sources?: SourceDocument[] }> {
+): Promise<ChatAnswerResult> {
   try {
     const patientId = await ensurePatientId()
-    const result = await queryPatient(patientId, question, queryMode)
+    const result = await queryPatient(patientId, question, queryMode, "concise")
     const sources = result.sources.filter(
       (s) => Boolean(s.title || s.source || s.url),
     )
+    const text = result.answer
     return {
-      text: result.answer,
+      text,
       sources: sources.length > 0 ? sources : undefined,
+      turnId: result.turn_id ?? undefined,
+      detailEligible: isDetailEligible(text) && Boolean(result.turn_id),
     }
   } catch (err) {
     console.error("Query failed:", err)
-    return { text: CHAT_ERROR_MESSAGE }
+    return { text: CHAT_ERROR_MESSAGE, detailEligible: false }
+  }
+}
+
+async function fetchExpandedAnswer(
+  turnId: string,
+  queryMode: QueryMode,
+): Promise<{ text: string; sources?: SourceDocument[] }> {
+  const patientId = await ensurePatientId()
+  const result = await expandConversationTurn(patientId, turnId, queryMode)
+  const sources = result.sources.filter(
+    (s) => Boolean(s.title || s.source || s.url),
+  )
+  return {
+    text: result.answer,
+    sources: sources.length > 0 ? sources : undefined,
   }
 }
 
@@ -1258,6 +1338,8 @@ function HistoryPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
   const [composeError, setComposeError] = useState<string | null>(null)
+  const [pendingDetail, setPendingDetail] = useState<PendingDetailOffer | null>(null)
+  const [expandingDetail, setExpandingDetail] = useState(false)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
   const loadConversations = React.useCallback(async (selectNewest = false) => {
@@ -1298,33 +1380,58 @@ function HistoryPage() {
     }
   }, [loadConversations])
 
+  useEffect(() => {
+    setPendingDetail(null)
+  }, [activeId])
+
   const handleFollowUp = async (text: string) => {
     if (!activeId || thinking) return
     setComposeError(null)
+    setPendingDetail(null)
     setThinking(true)
     const priorActiveId = activeId
     setConversations((prev) =>
       prev.map((c) =>
         c.id === priorActiveId
-          ? { ...c, messages: [...c.messages, { role: "user", text }] }
+          ? {
+              ...c,
+    messages: [
+                ...stripPendingDetailOffers(c.messages),
+                { role: "user", text },
+              ],
+            }
           : c,
       ),
     )
     try {
-      const { text: answer } = await fetchChatAnswer(text)
-      if (answer === CHAT_ERROR_MESSAGE) {
+      const result = await fetchChatAnswer(text, "general")
+      if (result.text === CHAT_ERROR_MESSAGE) {
         setComposeError(CHAT_ERROR_MESSAGE)
         await loadConversations(false)
         return
       }
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === priorActiveId
-            ? { ...c, messages: [...c.messages, { role: "ai", text: answer }] }
-            : c,
-        ),
-      )
       await loadConversations(true)
+      if (result.detailEligible && result.turnId) {
+        setPendingDetail({ turnId: result.turnId, queryMode: "general" })
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === result.turnId
+              ? {
+                  ...c,
+    messages: [
+                    ...c.messages,
+                    {
+                      role: "detail-offer",
+                      text: "",
+                      detailChoice: "pending",
+                      turnId: result.turnId,
+                    },
+                  ],
+                }
+              : c,
+          ),
+        )
+      }
     } catch (err) {
       setComposeError(
         err instanceof PatientApiError ? err.message : "Could not send message.",
@@ -1332,6 +1439,66 @@ function HistoryPage() {
       await loadConversations(false)
     } finally {
       setThinking(false)
+    }
+  }
+
+  const handleDetailYes = async () => {
+    if (!pendingDetail || expandingDetail) return
+    const { turnId, queryMode } = pendingDetail
+    setExpandingDetail(true)
+    setComposeError(null)
+    try {
+      const { text, sources } = await fetchExpandedAnswer(turnId, queryMode)
+      setConversations((prev) =>
+        prev.map((c) => {
+          const hasOffer = c.messages.some(
+            (m) => m.role === "detail-offer" && m.turnId === turnId,
+          )
+          if (!hasOffer && c.id !== turnId) return c
+          return {
+            ...c,
+    messages: [
+              ...markDetailOfferResolved(c.messages, turnId, "yes"),
+              { role: "ai", text, sources, variant: "detailed" },
+            ],
+          }
+        }),
+      )
+      setPendingDetail(null)
+      await loadConversations(false)
+    } catch (err) {
+      setComposeError(
+        err instanceof PatientApiError ? err.message : "Could not load more detail.",
+      )
+    } finally {
+      setExpandingDetail(false)
+    }
+  }
+
+  const handleDetailNo = async () => {
+    if (!pendingDetail) return
+    const { turnId } = pendingDetail
+    setComposeError(null)
+    try {
+      const patientId = await ensurePatientId()
+      await declineConversationDetail(patientId, turnId)
+      setConversations((prev) =>
+        prev.map((c) => {
+          const hasOffer = c.messages.some(
+            (m) => m.role === "detail-offer" && m.turnId === turnId,
+          )
+          if (!hasOffer && c.id !== turnId) return c
+          return {
+            ...c,
+            messages: markDetailOfferResolved(c.messages, turnId, "no"),
+          }
+        }),
+      )
+      setPendingDetail(null)
+    } catch (err) {
+      setComposeError(
+        err instanceof PatientApiError ? err.message : "Could not save your choice.",
+      )
     }
   }
 
@@ -1588,7 +1755,30 @@ function HistoryPage() {
           style={{ flex: 1, overflowY: "auto", padding: "28px 28px 8px" }}
           className="flex flex-col gap-5"
         >
-          {active.messages.map((msg, i) => (
+          {active.messages.map((msg, i) =>
+            msg.role === "detail-offer" ? (
+              <div key={i} className="flex justify-center py-1">
+                <DetailThreadBanner
+                  choice={msg.detailChoice ?? "pending"}
+                  onYes={
+                    msg.detailChoice === "pending"
+                      ? () => void handleDetailYes()
+                      : undefined
+                  }
+                  onNo={
+                    msg.detailChoice === "pending"
+                      ? () => void handleDetailNo()
+                      : undefined
+                  }
+                  disabled={expandingDetail}
+                  cardBg={T.card}
+                  fg={T.fg}
+                  muted={T.muted}
+                  border={T.border}
+                  sage={T.sage}
+                />
+              </div>
+            ) : (
             <div
               key={i}
               className={`flex gap-3 ${
@@ -1620,10 +1810,9 @@ function HistoryPage() {
                   </span>
                 </div>
               )}
-              {/* Bubble */}
+              <div className="flex flex-col gap-1" style={{ maxWidth: "68%" }}>
               <div
                 style={{
-                  maxWidth: "68%",
                   backgroundColor: msg.role === "ai" ? T.card : T.sage,
                   borderRadius:
                     msg.role === "ai"
@@ -1636,31 +1825,41 @@ function HistoryPage() {
                   padding: "12px 16px",
                 }}
               >
-                {msg.role === "ai" ? (
-                  <ChatMarkdown
-                    text={msg.text}
-                    color={T.fg}
-                    linkColor={T.sage}
-                  />
-                ) : (
-                  msg.text.split("\n\n").map((para, j) => (
-                    <p
-                      key={j}
-                      style={{ color: "white" }}
-                      className={`text-sm font-500 leading-relaxed ${
-                        j > 0 ? "mt-3" : ""
-                      }`}
-                    >
-                      {para}
-                    </p>
-                  ))
-                )}
+                  {msg.role === "ai" ? (
+                    <ChatMarkdown
+                      text={msg.text}
+                      color={T.fg}
+                      linkColor={T.sage}
+                    />
+                  ) : (
+                    msg.text.split("\n\n").map((para, j) => (
+                  <p
+                    key={j}
+                        style={{ color: "white" }}
+                    className={`text-sm font-500 leading-relaxed ${
+                      j > 0 ? "mt-3" : ""
+                    }`}
+                  >
+                        {para}
+                      </p>
+                    ))
+                  )}
               </div>
+                {msg.role === "ai" && msg.sources && msg.sources.length > 0 && (
+                  <ChatSourceLinks sources={msg.sources} />
+                )}
             </div>
-          ))}
+            </div>
+          ),
+          )}
           {thinking && (
             <p style={{ color: T.muted }} className="text-xs font-600 italic px-1">
               Thinking…
+            </p>
+          )}
+          {expandingDetail && (
+            <p style={{ color: T.muted }} className="text-xs font-600 italic px-1">
+              Loading more detail…
             </p>
           )}
           <div ref={messagesEndRef} />
@@ -1673,7 +1872,7 @@ function HistoryPage() {
           )}
           <ConversationInput
             onSubmit={(t) => void handleFollowUp(t)}
-            disabled={thinking}
+            disabled={thinking || expandingDetail}
           />
         </div>
           </>
@@ -2803,103 +3002,103 @@ function ExerciseInsights({
       </div>
 
       {glucoseImpact.length > 0 && (
-        <div
-          style={{
-            backgroundColor: T.card,
-            borderRadius: 14,
-            boxShadow: "0 1px 8px rgba(61,56,48,0.07)",
-          }}
-          className="p-5"
-        >
-          <p style={{ color: T.fg }} className="text-sm font-700 mb-1">
-            Effect on glucose
-          </p>
-          <p style={{ color: T.muted }} className="text-xs font-500 mb-4">
+      <div
+        style={{
+          backgroundColor: T.card,
+          borderRadius: 14,
+          boxShadow: "0 1px 8px rgba(61,56,48,0.07)",
+        }}
+        className="p-5"
+      >
+        <p style={{ color: T.fg }} className="text-sm font-700 mb-1">
+          Effect on glucose
+        </p>
+        <p style={{ color: T.muted }} className="text-xs font-500 mb-4">
             Self-reported glucose before sessions vs. readings in the 2 hours after
-          </p>
-          <div className="flex flex-col gap-3">
+        </p>
+        <div className="flex flex-col gap-3">
             {glucoseImpact.map((row) => {
               const color = typeColor[row.type] ?? T.lavender
               const before = row.before
               const after = row.after
               return (
-                <div key={row.type} className="flex items-center gap-4">
-                  <span
-                    style={{ color: T.fgSoft, minWidth: 60 }}
-                    className="text-xs font-700"
-                  >
-                    {row.type}
-                  </span>
-                  <div className="flex items-center gap-2 flex-1">
-                    <span
-                      style={{ color: T.muted }}
-                      className="text-xs font-500 tabular-nums w-16 text-right"
-                    >
+            <div key={row.type} className="flex items-center gap-4">
+              <span
+                style={{ color: T.fgSoft, minWidth: 60 }}
+                className="text-xs font-700"
+              >
+                {row.type}
+              </span>
+              <div className="flex items-center gap-2 flex-1">
+                <span
+                  style={{ color: T.muted }}
+                  className="text-xs font-500 tabular-nums w-16 text-right"
+                >
                       {before != null ? `${before} mg/dL` : "—"}
-                    </span>
+                </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 6,
+                    backgroundColor: T.bg,
+                    borderRadius: 4,
+                    overflow: "hidden",
+                  }}
+                >
+                      {before != null && (
                     <div
                       style={{
-                        flex: 1,
-                        height: 6,
-                        backgroundColor: T.bg,
-                        borderRadius: 4,
-                        overflow: "hidden",
-                      }}
-                    >
-                      {before != null && (
-                        <div
-                          style={{
                             width: `${(before / 200) * 100}%`,
                             height: "100%",
                             backgroundColor: color,
-                            opacity: 0.4,
-                            borderRadius: 4,
-                          }}
-                        />
-                      )}
-                    </div>
-                    <svg width="20" height="10" viewBox="0 0 20 10">
-                      <path
-                        d="M0 5h16M12 1l4 4-4 4"
-                        stroke={T.muted}
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        fill="none"
-                      />
-                    </svg>
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 6,
-                        backgroundColor: T.bg,
+                        opacity: 0.4,
                         borderRadius: 4,
-                        overflow: "hidden",
                       }}
-                    >
-                      {after != null && (
-                        <div
-                          style={{
-                            width: `${(after / 200) * 100}%`,
-                            height: "100%",
-                            backgroundColor: color,
-                            opacity: 0.8,
-                            borderRadius: 4,
-                          }}
-                        />
+                    />
                       )}
-                    </div>
-                    <span
-                      style={{ color: color }}
-                      className="text-xs font-700 tabular-nums w-16"
-                    >
-                      {after != null ? `${after} mg/dL` : "—"}
-                    </span>
-                  </div>
                 </div>
+                <svg width="20" height="10" viewBox="0 0 20 10">
+                  <path
+                    d="M0 5h16M12 1l4 4-4 4"
+                    stroke={T.muted}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </svg>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 6,
+                    backgroundColor: T.bg,
+                    borderRadius: 4,
+                    overflow: "hidden",
+                  }}
+                >
+                      {after != null && (
+                  <div
+                    style={{
+                            width: `${(after / 200) * 100}%`,
+                      height: "100%",
+                            backgroundColor: color,
+                      opacity: 0.8,
+                      borderRadius: 4,
+                    }}
+                  />
+                      )}
+                </div>
+                <span
+                      style={{ color: color }}
+                  className="text-xs font-700 tabular-nums w-16"
+                >
+                      {after != null ? `${after} mg/dL` : "—"}
+                </span>
+              </div>
+            </div>
               )
             })}
-          </div>
         </div>
+      </div>
       )}
     </div>
   )
@@ -3141,31 +3340,31 @@ function FoodInsights({
             Log meals to see your frequent foods.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
             {topFoods.map((f) => (
               <div
                 key={f.name}
-                className="flex items-center justify-between gap-3 py-1.5"
-                style={{ borderBottom: `1px solid ${T.border}` }}
-              >
-                <div>
-                  <p style={{ color: T.fg }} className="text-xs font-700">
-                    {f.name}
-                  </p>
-                  <p style={{ color: T.muted }} className="text-xs font-500">
+              className="flex items-center justify-between gap-3 py-1.5"
+              style={{ borderBottom: `1px solid ${T.border}` }}
+            >
+              <div>
+                <p style={{ color: T.fg }} className="text-xs font-700">
+                  {f.name}
+                </p>
+                <p style={{ color: T.muted }} className="text-xs font-500">
                     {f.meal ? `${f.meal} · ` : ""}
                     {f.carbs_avg > 0 ? `~${f.carbs_avg}g carbs` : "carbs not logged"}
-                  </p>
-                </div>
-                <span
-                  style={{ color: T.muted }}
-                  className="text-xs font-600 tabular-nums shrink-0"
-                >
-                  ×{f.count}
-                </span>
+                </p>
               </div>
-            ))}
-          </div>
+              <span
+                style={{ color: T.muted }}
+                className="text-xs font-600 tabular-nums shrink-0"
+              >
+                ×{f.count}
+              </span>
+            </div>
+          ))}
+        </div>
         )}
       </div>
     </div>
@@ -3443,53 +3642,53 @@ function MoodInsights({
               </p>
             ) : (
               <>
-                <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5">
                   {moodVsGlucose.map((row) => (
-                    <div key={row.mood} className="flex items-center gap-3">
-                      <span
-                        style={{ color: T.fgSoft, minWidth: 46 }}
-                        className="text-xs font-700"
-                      >
+                <div key={row.mood} className="flex items-center gap-3">
+                  <span
+                    style={{ color: T.fgSoft, minWidth: 46 }}
+                    className="text-xs font-700"
+                  >
                         {row.label}
-                      </span>
-                      <div
-                        style={{
-                          flex: 1,
-                          backgroundColor: T.bg,
-                          borderRadius: 4,
-                          height: 7,
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
+                  </span>
+                  <div
+                    style={{
+                      flex: 1,
+                      backgroundColor: T.bg,
+                      borderRadius: 4,
+                      height: 7,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
                             width: `${(row.avg_glucose / 160) * 100}%`,
-                            height: "100%",
+                        height: "100%",
                             backgroundColor: moodColors2[row.mood] ?? T.muted,
-                            borderRadius: 4,
-                          }}
-                        />
-                      </div>
-                      <span
+                        borderRadius: 4,
+                      }}
+                    />
+                  </div>
+                  <span
                         style={{
                           color: T.muted,
                           minWidth: 60,
                           textAlign: "right",
                         }}
-                        className="text-xs font-600 tabular-nums"
-                      >
+                    className="text-xs font-600 tabular-nums"
+                  >
                         {row.avg_glucose} mg/dL
-                      </span>
-                    </div>
-                  ))}
+                  </span>
                 </div>
-                <p
-                  style={{ color: T.muted }}
-                  className="text-xs font-500 mt-3 leading-relaxed"
-                >
+              ))}
+            </div>
+            <p
+              style={{ color: T.muted }}
+              className="text-xs font-500 mt-3 leading-relaxed"
+            >
                   Averages on days when both mood and glucose were logged — for
                   your awareness, not medical advice.
-                </p>
+            </p>
               </>
             )}
           </div>
@@ -3650,10 +3849,13 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
 
 // ─── Active Chat Page ─────────────────────────────────────────────────────────
 type ChatMessage = {
-  role: "user" | "ai"
+  role: "user" | "ai" | "detail-offer"
   text: string
   ts: string
   sources?: SourceDocument[]
+  variant?: "concise" | "detailed"
+  turnId?: string
+  detailChoice?: DetailChoice
 }
 
 function ActiveChatPage({
@@ -3674,21 +3876,55 @@ function ActiveChatPage({
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState(false)
   const [thinking, setThinking] = useState(true)
+  const [pendingDetail, setPendingDetail] = useState<PendingDetailOffer | null>(null)
+  const [expandingDetail, setExpandingDetail] = useState(false)
   const bottomRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, thinking])
+  }, [messages, thinking, expandingDetail])
+
+  const applyAnswer = (result: ChatAnswerResult, mode: QueryMode) => {
+    setMessages((prev) => {
+      const next: ChatMessage[] = [
+        ...prev,
+        {
+          role: "ai",
+          text: result.text,
+          ts: now(),
+          sources: result.sources,
+          turnId: result.turnId,
+          variant: "concise",
+        },
+      ]
+      if (result.detailEligible && result.turnId) {
+        next.push({
+          role: "detail-offer",
+          text: "",
+          ts: now(),
+          detailChoice: "pending",
+          turnId: result.turnId,
+        })
+        setPendingDetail({ turnId: result.turnId, queryMode: mode })
+      } else {
+        setPendingDetail(null)
+      }
+      return next
+    })
+  }
 
   React.useEffect(() => {
     const modeForInitial = queryMode
     let cancelled = false
-    void (async () => {
-      const { text, sources } = await fetchChatAnswer(initialQuestion, modeForInitial)
+    setPendingDetail(null)
+    setThinking(true)
+    void coalesceInitialChatQuery(modeForInitial, initialQuestion, () =>
+      fetchChatAnswer(initialQuestion, modeForInitial),
+    ).then((result) => {
       if (cancelled) return
-      setMessages((prev) => [...prev, { role: "ai", text, ts: now(), sources }])
+      applyAnswer(result, modeForInitial)
       setThinking(false)
-    })()
+    })
     return () => {
       cancelled = true
     }
@@ -3698,14 +3934,62 @@ function ActiveChatPage({
 
   const send = () => {
     const q = input.trim()
-    if (!q || thinking) return
+    if (!q || thinking || expandingDetail) return
     setInput("")
-    setMessages(prev => [...prev, { role: "user", text: q, ts: now() }])
+    setPendingDetail(null)
+    setMessages((prev) => [
+      ...stripPendingDetailOffers(prev),
+      { role: "user", text: q, ts: now() },
+    ])
     setThinking(true)
     void (async () => {
-      const { text, sources } = await fetchChatAnswer(q, queryMode)
-      setMessages(prev => [...prev, { role: "ai", text, ts: now(), sources }])
+      const result = await fetchChatAnswer(q, queryMode)
+      applyAnswer(result, queryMode)
       setThinking(false)
+    })()
+  }
+
+  const handleDetailYes = () => {
+    if (!pendingDetail || expandingDetail) return
+    const { turnId, queryMode } = pendingDetail
+    setExpandingDetail(true)
+    void (async () => {
+      try {
+        const { text, sources } = await fetchExpandedAnswer(turnId, queryMode)
+        setMessages((prev) => [
+          ...markDetailOfferResolved(prev, turnId, "yes"),
+          { role: "ai", text, ts: now(), sources, variant: "detailed" },
+        ])
+        setPendingDetail(null)
+      } catch (err) {
+        console.error("Expand failed:", err)
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: CHAT_ERROR_MESSAGE,
+            ts: now(),
+            variant: "detailed",
+          },
+        ])
+      } finally {
+        setExpandingDetail(false)
+      }
+    })()
+  }
+
+  const handleDetailNo = () => {
+    if (!pendingDetail) return
+    const { turnId } = pendingDetail
+    void (async () => {
+      try {
+        const patientId = await ensurePatientId()
+        await declineConversationDetail(patientId, turnId)
+        setMessages((prev) => markDetailOfferResolved(prev, turnId, "no"))
+        setPendingDetail(null)
+      } catch (err) {
+        console.error("Decline detail failed:", err)
+      }
     })()
   }
 
@@ -3718,11 +4002,11 @@ function ActiveChatPage({
           "What were my most logged meals?",
         ]
       : [
-          "Tell me more about that",
-          "What should I do differently?",
-          "How does this compare to last week?",
-          "Is this something to mention to my doctor?",
-        ]
+    "Tell me more about that",
+    "What should I do differently?",
+    "How does this compare to last week?",
+    "Is this something to mention to my doctor?",
+  ]
 
   const modeLabel = queryMode === "metrics" ? "Summarize logs" : "Learn"
 
@@ -3781,7 +4065,24 @@ function ActiveChatPage({
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "28px 24px 8px" }} className="flex flex-col gap-5">
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) =>
+          msg.role === "detail-offer" ? (
+            <div key={i} className="flex justify-center py-1">
+              <DetailThreadBanner
+                choice={msg.detailChoice ?? "pending"}
+                onYes={
+                  msg.detailChoice === "pending" ? handleDetailYes : undefined
+                }
+                onNo={msg.detailChoice === "pending" ? handleDetailNo : undefined}
+                disabled={expandingDetail}
+                cardBg={T.card}
+                fg={T.fg}
+                muted={T.muted}
+                border={T.border}
+                sage={T.sage}
+              />
+            </div>
+          ) : (
           <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {msg.role === "ai" ? (
               <div style={{ backgroundColor: T.sage + "20", flexShrink: 0 }}
@@ -3808,8 +4109,8 @@ function ActiveChatPage({
                       style={{ color: "white" }}
                       className={`text-sm font-500 leading-relaxed ${j > 0 ? "mt-3" : ""}`}
                     >
-                      {para}
-                    </p>
+                    {para}
+                  </p>
                   ))
                 )}
               </div>
@@ -3819,7 +4120,8 @@ function ActiveChatPage({
               <span style={{ color: T.muted }} className="text-xs font-500 px-1">{msg.ts}</span>
             </div>
           </div>
-        ))}
+        ),
+        )}
 
         {/* Thinking indicator */}
         {thinking && (
@@ -3862,7 +4164,7 @@ function ActiveChatPage({
             style={{ color: T.fg, backgroundColor: "transparent", outline: "none", fontFamily: "Nunito,sans-serif", flex: 1 }}
             className="text-sm font-500 placeholder:text-[#C0BAB2]" />
           <button onClick={send}
-            style={{ backgroundColor: input.trim() && !thinking ? T.sage : T.border, transition: "background-color 0.15s ease",
+            style={{ backgroundColor: input.trim() && !thinking && !expandingDetail ? T.sage : T.border, transition: "background-color 0.15s ease",
               borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
             className="cursor-pointer">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
