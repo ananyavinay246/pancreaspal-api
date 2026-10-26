@@ -23,6 +23,9 @@ import type {
 } from "./lib/api/dashboardTypes"
 import { DashboardProvider, useDashboard } from "./lib/dashboardContext"
 import { ensurePatientId } from "./lib/patientSession"
+import { AuthProvider, useAuth } from "./lib/authContext"
+import { AuthModal } from "./lib/AuthModal"
+import { AuthSessionSync } from "./lib/AuthSessionSync"
 import { ChatMarkdown } from "./lib/ChatMarkdown"
 import { DetailThreadBanner, type DetailChoice } from "./lib/DetailThreadBanner"
 import {
@@ -101,6 +104,7 @@ function Badge({
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) {
   const links = ["Home", "History", "Insights"]
+  const auth = useAuth()
   return (
     <header
       style={{ backgroundColor: T.card, borderBottom: `1px solid ${T.border}` }}
@@ -136,20 +140,69 @@ function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) 
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              backgroundColor: T.sage + "30",
-              border: `2px solid ${T.sage}`,
-            }}
-            className="flex items-center justify-center"
-          >
-            <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
-              M
-            </span>
-          </div>
+          {auth.authConfigured && !auth.isAuthenticated && (
+            <>
+              <button
+                type="button"
+                onClick={() => auth.openAuth("signIn")}
+                style={{ color: T.muted }}
+                className="text-xs font-700 cursor-pointer hidden sm:inline"
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => auth.openAuth("signUp")}
+                style={{ backgroundColor: T.sage, color: "#fff" }}
+                className="text-xs font-800 px-3 py-1.5 rounded-lg cursor-pointer"
+              >
+                Create account
+              </button>
+            </>
+          )}
+          {auth.authConfigured && auth.isAuthenticated && (
+            <>
+              <button
+                type="button"
+                onClick={() => void auth.signOutUser()}
+                style={{ color: T.muted }}
+                className="text-xs font-700 cursor-pointer"
+              >
+                Sign out
+              </button>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  backgroundColor: T.sage + "30",
+                  border: `2px solid ${T.sage}`,
+                }}
+                className="flex items-center justify-center"
+                title={auth.email ?? undefined}
+              >
+                <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
+                  {auth.userInitial}
+                </span>
+              </div>
+            </>
+          )}
+          {!auth.authConfigured && (
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                backgroundColor: T.sage + "30",
+                border: `2px solid ${T.sage}`,
+              }}
+              className="flex items-center justify-center"
+            >
+              <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
+                M
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -868,6 +921,8 @@ function FAB() {
 
 function DemoBanner() {
   const { dashboard } = useDashboard()
+  const auth = useAuth()
+  if (auth.isAuthenticated) return null
   if (!SHOW_DEMO_BANNER && dashboard?.has_any_metrics) return null
   if (!SHOW_DEMO_BANNER) return null
   return (
@@ -4253,6 +4308,7 @@ function AppFooter() {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 function AppShell() {
+  const auth = useAuth()
   const [page, setPage] = useState("Home")
   const [chatQuery, setChatQuery] = useState<string | null>(null)
   const [chatMode, setChatMode] = useState<QueryMode>("general")
@@ -4287,6 +4343,9 @@ function AppShell() {
 
   return (
     <div style={{ backgroundColor: T.bg, fontFamily: "Nunito, system-ui, sans-serif", minHeight: "100dvh" }}>
+      {auth.authModal && (
+        <AuthModal view={auth.authModal} onClose={auth.closeAuth} />
+      )}
       <Nav page={navHighlight} setPage={handleNavChange} />
       {page === "Home" && (
         <HomePage
@@ -4316,8 +4375,11 @@ function AppShell() {
 
 export default function App() {
   return (
-    <DashboardProvider>
-      <AppShell />
-    </DashboardProvider>
+    <AuthProvider>
+      <DashboardProvider>
+        <AuthSessionSync />
+        <AppShell />
+      </DashboardProvider>
+    </AuthProvider>
   )
 }

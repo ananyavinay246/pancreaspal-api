@@ -9,7 +9,12 @@ import {
 } from 'react'
 import { getDashboard, PatientApiError } from './api/patientApi'
 import type { DashboardPayload } from './api/dashboardTypes'
-import { clearStoredPatientId, ensurePatientId, isDemoPatientMode } from './patientSession'
+import {
+  clearPrivatePatientCache,
+  clearStoredPatientId,
+  ensurePatientId,
+  isDemoPatientMode,
+} from './patientSession'
 
 type DashboardContextValue = {
   dashboard: DashboardPayload | null
@@ -41,6 +46,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             )
           }
           clearStoredPatientId()
+          clearPrivatePatientCache()
           patientId = await ensurePatientId()
           const data = await getDashboard(patientId, 14, refresh)
           setDashboard(data)

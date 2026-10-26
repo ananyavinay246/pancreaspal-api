@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from './config'
+import { getPatientSessionAuth } from '../patientSessionAuth'
 import type {
   CreateMetricInput,
   CreateMetricResult,
@@ -67,8 +68,27 @@ function apiUrl(path: string): string {
   return base ? `${base}${path}` : path
 }
 
+export type MeResponse = {
+  email: string | null
+  patient_id: string
+  is_demo: boolean
+}
+
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers)
+  const token = await getPatientSessionAuth().getIdToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return fetch(apiUrl(path), { ...init, headers })
+}
+
+export async function fetchMe(): Promise<MeResponse> {
+  const res = await apiFetch('/api/v1/me')
+  if (!res.ok) throw await parseError(res)
+  return (await res.json()) as MeResponse
+}
+
 export async function initPatient(): Promise<string> {
-  const res = await fetch(apiUrl('/api/v1/patients/init'), { method: 'POST' })
+  const res = await apiFetch('/api/v1/patients/init', { method: 'POST' })
   if (!res.ok) throw await parseError(res)
   const data = (await res.json()) as { patient_id: string }
   return data.patient_id
@@ -80,7 +100,7 @@ export async function queryPatient(
   queryMode: QueryMode = 'general',
   responseDetail: ResponseDetail = 'concise',
 ): Promise<QueryResponse> {
-  const res = await fetch(apiUrl(`/api/v1/patients/${encodeURIComponent(patientId)}/query`), {
+  const res = await apiFetch(`/api/v1/patients/${encodeURIComponent(patientId)}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -97,10 +117,8 @@ export async function declineConversationDetail(
   patientId: string,
   turnId: string,
 ): Promise<{ turn_id: string; detail_offer_answer: 'no' }> {
-  const res = await fetch(
-    apiUrl(
-      `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/decline-detail`,
-    ),
+  const res = await apiFetch(
+    `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/decline-detail`,
     { method: 'POST' },
   )
   if (!res.ok) throw await parseError(res)
@@ -112,10 +130,8 @@ export async function expandConversationTurn(
   turnId: string,
   queryMode: QueryMode = 'general',
 ): Promise<ExpandTurnResponse> {
-  const res = await fetch(
-    apiUrl(
-      `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/expand`,
-    ),
+  const res = await apiFetch(
+    `/api/v1/patients/${encodeURIComponent(patientId)}/conversations/${encodeURIComponent(turnId)}/expand`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -130,7 +146,7 @@ export async function createMetric(
   patientId: string,
   body: CreateMetricInput,
 ): Promise<CreateMetricResult> {
-  const res = await fetch(apiUrl(`/api/v1/patients/${encodeURIComponent(patientId)}/metrics`), {
+  const res = await apiFetch(`/api/v1/patients/${encodeURIComponent(patientId)}/metrics`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -146,9 +162,7 @@ export async function getDashboard(
 ): Promise<DashboardPayload> {
   const params = new URLSearchParams({ days: String(days) })
   if (refresh) params.set('refresh', 'true')
-  const res = await fetch(
-    apiUrl(`/api/v1/patients/${encodeURIComponent(patientId)}/dashboard?${params}`),
-  )
+  const res = await apiFetch(`/api/v1/patients/${encodeURIComponent(patientId)}/dashboard?${params}`)
   if (!res.ok) throw await parseError(res)
   return (await res.json()) as DashboardPayload
 }
@@ -157,10 +171,8 @@ export async function listConversations(
   patientId: string,
   limit = 50,
 ): Promise<ConversationTurn[]> {
-  const res = await fetch(
-    apiUrl(
-      `/api/v1/patients/${encodeURIComponent(patientId)}/conversations?limit=${encodeURIComponent(String(limit))}`,
-    ),
+  const res = await apiFetch(
+    `/api/v1/patients/${encodeURIComponent(patientId)}/conversations?limit=${encodeURIComponent(String(limit))}`,
   )
   if (!res.ok) throw await parseError(res)
   const data = (await res.json()) as { turns: ConversationTurn[] }

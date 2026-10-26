@@ -1,4 +1,5 @@
-import { initPatient } from './api/patientApi'
+import { fetchMe, initPatient } from './api/patientApi'
+import { getPatientSessionAuth } from './patientSessionAuth'
 
 const STORAGE_KEY = 'currentPatientId'
 
@@ -6,6 +7,8 @@ const STORAGE_KEY = 'currentPatientId'
 const DEMO_PATIENT_ID = (import.meta.env.VITE_DEMO_PATIENT_ID ?? '').trim()
 
 let initPromise: Promise<string> | null = null
+let privatePatientId: string | null = null
+let privatePatientPromise: Promise<string> | null = null
 
 export function isDemoPatientMode(): boolean {
   return DEMO_PATIENT_ID.length > 0
@@ -28,8 +31,26 @@ export function clearStoredPatientId(): void {
   initPromise = null
 }
 
-/** Returns a patient_id with an empty chart record; reuses localStorage when present. */
+export function clearPrivatePatientCache(): void {
+  privatePatientId = null
+  privatePatientPromise = null
+}
+
+/** Returns patient_id for the current guest or signed-in user. */
 export async function ensurePatientId(): Promise<string> {
+  const { isAuthenticated } = getPatientSessionAuth()
+
+  if (isAuthenticated) {
+    if (privatePatientId) return privatePatientId
+    if (!privatePatientPromise) {
+      privatePatientPromise = fetchMe().then((me) => {
+        privatePatientId = me.patient_id
+        return me.patient_id
+      })
+    }
+    return privatePatientPromise
+  }
+
   if (DEMO_PATIENT_ID) return DEMO_PATIENT_ID
 
   const existing = getStoredPatientId()

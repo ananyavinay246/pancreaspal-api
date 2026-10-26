@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   const emitSourcemaps = mode === 'development'
 
   return {
+    // Load .env / .env.local from repo root so VITE_* sit beside API vars for local dev.
+    envDir: path.resolve(__dirname, '..'),
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,

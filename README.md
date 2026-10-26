@@ -379,6 +379,36 @@ Use a fixed patient id (`demo_patient.py` → `a1111111-1111-4111-8111-111111111
 
 Anyone who opens the hosted app then sees the same dashboard, History, and Insights. New logs they add update the **shared** demo patient (fine for teammate demos; do not use for real PHI).
 
+### Login mode (demo until sign-in)
+
+Visitors browse as the **shared demo** patient until they choose **Create account** or **Sign in** (Cognito email + password). After verification, the app uses a **private** `patient_id` linked to their Cognito user; demo activity is not copied.
+
+**AWS (one-time):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/create-cognito-user-pool.ps1
+python create_user_patients_table.py
+```
+
+Update IAM role `pancreaspal-apprunner-instance` with [`deploy/apprunner-instance-policy.json`](deploy/apprunner-instance-policy.json) (includes `pancreaspal-user-patients`).
+
+**Backend `.env` / App Runner:**
+
+| Variable | Purpose |
+|----------|---------|
+| `AUTH_ENABLED=true` | Enforce demo-only guest API access + JWT for private patients |
+| `DEMO_PATIENT_ID` | Same UUID as `VITE_DEMO_PATIENT_ID` |
+| `COGNITO_USER_POOL_ID` | From create-cognito script |
+| `COGNITO_APP_CLIENT_ID` | SPA client id |
+| `COGNITO_REGION` | e.g. `us-east-1` |
+| `DYNAMODB_USER_PATIENTS_TABLE` | Default `pancreaspal-user-patients` |
+
+**Amplify build env:** `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`, `VITE_COGNITO_REGION` (plus existing `VITE_API_URL` and `VITE_DEMO_PATIENT_ID`).
+
+**API:** `GET /api/v1/me` (Bearer ID token) returns `{ email, patient_id, is_demo: false }`. `POST /api/v1/patients/init` returns **403** when `AUTH_ENABLED=true`.
+
+Local dev without Cognito: leave `AUTH_ENABLED` unset/false and omit `VITE_COGNITO_*` — behavior matches the pre-login app.
+
 ## Deploy on AWS (App Runner + Amplify)
 
 Teammates only need the Amplify URL. They do not create a Knowledge Base or configure AWS.
@@ -427,15 +457,16 @@ CORS_ORIGINS=https://main.d3cmc7tgu7fkco.amplifyapp.com
 
 `BEDROCK_DATA_SOURCE_ID` and `BEDROCK_S3_URI` are only needed for `ingest_knowledge_base.py` on a laptop, not on App Runner.
 
-The public Amplify URL has no login. Share it only with teammates; do not upload real PHI.
+With login enabled, guests still use the shared demo; sign-in is optional. Do not put real PHI in the demo patient. Private accounts are for user-entered data only after sign-in.
 
 ### After you push (manual AWS checklist)
 
-1. Apply the latest [`deploy/apprunner-instance-policy.json`](deploy/apprunner-instance-policy.json) to IAM role `pancreaspal-apprunner-instance` (includes `dynamodb:GetItem` on the health-metrics table for dashboard cache).
-2. Ensure DynamoDB table `pancreaspal-health-metrics` exists (`python create_health_metrics_table.py` once per account/region).
-3. Push code, then run `deploy/create-apprunner-service.ps1` to rebuild the Docker image and update App Runner env (including `DYNAMODB_HEALTH_METRICS_TABLE` and `CORS_ORIGINS`).
-4. In Amplify, set `VITE_API_URL` to your App Runner URL and redeploy the frontend branch.
-5. Smoke test: `POST /init` → log a metric → `GET /dashboard` → chat in Learn and Summarize my logs modes.
+1. Apply the latest [`deploy/apprunner-instance-policy.json`](deploy/apprunner-instance-policy.json) to IAM role `pancreaspal-apprunner-instance` (health-metrics cache + user-patient mapping table).
+2. Ensure DynamoDB tables exist: `python create_health_metrics_table.py`, `python create_conversation_table.py`, and (if using login) `python create_user_patients_table.py`.
+3. Push code, then run `deploy/create-apprunner-service.ps1` to rebuild the Docker image and update App Runner env (including auth vars when enabled).
+4. In Amplify, set `VITE_API_URL` and Cognito `VITE_COGNITO_*` vars; redeploy the frontend branch.
+5. Smoke test **guest:** open Amplify URL → demo dashboard → chat/metrics on demo id.
+6. Smoke test **signed-in:** Create account → verify email → sign in → empty private dashboard → log metric → sign out → demo again.
 
 ## Notes and Troubleshooting
 

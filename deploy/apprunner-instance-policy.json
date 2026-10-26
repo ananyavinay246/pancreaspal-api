@@ -32,6 +32,15 @@
       "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-health-metrics"
     },
     {
+      "Sid": "DynamoDBUserPatients",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-user-patients"
+    },
+    {
       "Sid": "KnowledgeBaseDocsRead",
       "Effect": "Allow",
       "Action": ["s3:GetObject"],

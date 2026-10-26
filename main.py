@@ -3,16 +3,24 @@ import os
 from typing import Literal
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 load_dotenv()
 
+from auth import (
+    AuthUser,
+    auth_enabled,
+    authorize_patient_id,
+    get_optional_user,
+    get_required_user,
+)
 from rag_service import NO_METRICS_DATA_ANSWER, RAGService
 from patient_service import PatientService
 from health_metrics_service import HealthMetricsService, HealthMetricsValidationError
 from dashboard_service import DashboardService
+from user_patient_service import UserPatientService
 
 
 def _cors_origins() -> list[str]:
@@ -48,10 +56,20 @@ app.add_middleware(
 try:
     rag_service = RAGService()
     patient_service = PatientService()
+    user_patient_service = UserPatientService(patient_service)
     health_metrics_service = HealthMetricsService()
     dashboard_service = DashboardService(metrics_service=health_metrics_service)
 except Exception as e:
     raise RuntimeError(f"FATAL: Failed to initialize services. Application cannot start. Error: {e}")
+
+
+def _access_patient(
+    patient_id: str,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> str:
+    authorized = authorize_patient_id(patient_id, user, user_patient_service)
+    _require_patient(authorized)
+    return authorized
 
 
 # --- API Data Models ---
@@ -291,6 +309,12 @@ class ConversationTurn(BaseModel):
 class ListConversationsResponse(BaseModel):
     turns: list[ConversationTurn]
 
+
+class MeResponse(BaseModel):
+    email: str | None
+    patient_id: str
+    is_demo: bool = False
+
 # --- API Endpoints ---
 
 def _require_patient(patient_id: str) -> None:
@@ -304,12 +328,29 @@ def read_root():
 @app.post("/api/v1/patients/init", response_model=PatientInitResponse)
 async def init_patient_session():
     """Create a patient session (empty chart text; chat uses KB + conversation memory)."""
+    if auth_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Anonymous session creation is disabled. Use the demo patient or sign in.",
+        )
     patient_id = patient_service.create_patient_session()
     return {"patient_id": patient_id}
 
 
+@app.get("/api/v1/me", response_model=MeResponse)
+async def get_current_user_profile(user: AuthUser = Depends(get_required_user)):
+    """Return the signed-in user's linked patient_id (creates one on first login)."""
+    if not auth_enabled():
+        raise HTTPException(status_code=501, detail="Authentication is not enabled on this server.")
+    patient_id = user_patient_service.get_or_create_patient_for_sub(user.sub, user.email)
+    return MeResponse(email=user.email, patient_id=patient_id, is_demo=False)
+
+
 @app.post("/api/v1/patients/{patient_id}/append", response_model=AppendHistoryResponse)
-async def append_to_history(patient_id: str, request: AppendHistoryRequest):
+async def append_to_history(
+    request: AppendHistoryRequest,
+    patient_id: str = Depends(_access_patient),
+):
     """
     Appends a new text note to an existing patient's history.
     """
@@ -323,7 +364,10 @@ async def append_to_history(patient_id: str, request: AppendHistoryRequest):
     }
 
 @app.post("/api/v1/patients/{patient_id}/query", response_model=RAGQueryResponse)
-async def query_patient_agent(patient_id: str, request: PatientQueryRequest):
+async def query_patient_agent(
+    request: PatientQueryRequest,
+    patient_id: str = Depends(_access_patient),
+):
     """Query patient agent using Bedrock Knowledge Base retrieval and Claude."""
     patient_history = patient_service.get_patient_history_text(patient_id)
     if patient_history is None:
@@ -375,12 +419,11 @@ async def query_patient_agent(patient_id: str, request: PatientQueryRequest):
     response_model=ExpandTurnResponse,
 )
 async def expand_conversation_turn(
-    patient_id: str,
     turn_id: str,
     request: ExpandTurnRequest,
+    patient_id: str = Depends(_access_patient),
 ):
     """Generate a detailed follow-up for an existing concise turn."""
-    _require_patient(patient_id)
     turn = patient_service.get_turn(patient_id, turn_id)
     if turn is None:
         raise HTTPException(status_code=404, detail="Conversation turn not found.")
@@ -445,9 +488,11 @@ async def expand_conversation_turn(
 
 
 @app.post("/api/v1/patients/{patient_id}/conversations/{turn_id}/decline-detail")
-async def decline_conversation_detail(patient_id: str, turn_id: str):
+async def decline_conversation_detail(
+    turn_id: str,
+    patient_id: str = Depends(_access_patient),
+):
     """Record that the user declined the optional in-depth follow-up."""
-    _require_patient(patient_id)
     turn = patient_service.get_turn(patient_id, turn_id)
     if turn is None:
         raise HTTPException(status_code=404, detail="Conversation turn not found.")
@@ -463,9 +508,11 @@ async def decline_conversation_detail(patient_id: str, turn_id: str):
     "/api/v1/patients/{patient_id}/metrics",
     response_model=CreateMetricResponse,
 )
-async def create_health_metric(patient_id: str, request: CreateMetricRequest):
+async def create_health_metric(
+    request: CreateMetricRequest,
+    patient_id: str = Depends(_access_patient),
+):
     """Log a health metric entry (glucose, insulin, exercise, food, mood)."""
-    _require_patient(patient_id)
     try:
         result = health_metrics_service.create_entry(
             patient_id=patient_id,
@@ -487,12 +534,11 @@ async def create_health_metric(patient_id: str, request: CreateMetricRequest):
     response_model=DashboardResponse,
 )
 async def get_patient_dashboard(
-    patient_id: str,
     days: int = Query(14, ge=7, le=30),
     refresh: bool = Query(False, description="Force recompute and update cache"),
+    patient_id: str = Depends(_access_patient),
 ):
     """Return cached dashboard aggregates for Home and Insights (refreshed on each new metric log)."""
-    _require_patient(patient_id)
     payload = dashboard_service.get_dashboard(patient_id, days=days, refresh=refresh)
     return payload
 
@@ -502,12 +548,11 @@ async def get_patient_dashboard(
     response_model=ListMetricsResponse,
 )
 async def list_health_metrics(
-    patient_id: str,
     metric_type: str | None = Query(None, description="Filter by metric type"),
     limit: int = Query(100, ge=1, le=500),
+    patient_id: str = Depends(_access_patient),
 ):
     """List health metric entries for a patient, newest first."""
-    _require_patient(patient_id)
     try:
         entries = health_metrics_service.list_entries(
             patient_id=patient_id,
@@ -524,10 +569,9 @@ async def list_health_metrics(
     response_model=ListConversationsResponse,
 )
 async def list_patient_conversations(
-    patient_id: str,
     limit: int = Query(50, ge=1, le=100),
+    patient_id: str = Depends(_access_patient),
 ):
     """List stored chat turns for the patient, newest first."""
-    _require_patient(patient_id)
     turns = patient_service.list_conversation_turns(patient_id, limit=limit)
     return {"turns": turns}

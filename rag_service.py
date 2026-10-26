@@ -339,7 +339,7 @@ class RAGService:
         )
 
     def _generate(self, prompt: str, response_detail: str = "concise") -> str:
-        max_tokens = 1024 if response_detail == "detailed" else 400
+        max_tokens = 900 if response_detail == "detailed" else 400
         response = self.runtime.converse(
             modelId=self.model_id,
             messages=[

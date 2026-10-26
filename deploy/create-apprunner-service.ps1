@@ -82,6 +82,15 @@ $RuntimeEnv = @{
     CORS_ORIGINS                  = $Cors
 }
 
+foreach ($key in @(
+    "AUTH_ENABLED", "COGNITO_USER_POOL_ID", "COGNITO_APP_CLIENT_ID", "COGNITO_REGION",
+    "DEMO_PATIENT_ID", "DYNAMODB_USER_PATIENTS_TABLE"
+)) {
+    if ($EnvMap.ContainsKey($key) -and $EnvMap[$key]) {
+        $RuntimeEnv[$key] = Strip-EnvQuotes $EnvMap[$key]
+    }
+}
+
 $SourceObj = @{
     AuthenticationConfiguration = @{ AccessRoleArn = $AccessRole }
     AutoDeploymentsEnabled      = $true
