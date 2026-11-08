@@ -149,7 +149,12 @@ def authorize_patient_id(
 
     demo_id = demo_patient_id()
     if user is None:
-        if demo_id and path_patient_id == demo_id:
+        if not demo_id:
+            raise HTTPException(
+                status_code=503,
+                detail="Guest demo is not configured on the server (set DEMO_PATIENT_ID when AUTH_ENABLED).",
+            )
+        if path_patient_id == demo_id:
             return path_patient_id
         raise HTTPException(
             status_code=403,
@@ -158,5 +163,10 @@ def authorize_patient_id(
 
     allowed = user_patient_service.get_or_create_patient_for_sub(user.sub, user.email)
     if path_patient_id != allowed:
-        raise HTTPException(status_code=403, detail="Not authorized for this patient.")
+        logging.warning(
+            "Patient path %s does not match mapped id %s for sub %s; using mapped id.",
+            path_patient_id,
+            allowed,
+            user.sub,
+        )
     return allowed

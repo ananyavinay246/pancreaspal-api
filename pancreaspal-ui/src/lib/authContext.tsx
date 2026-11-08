@@ -60,8 +60,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authModal, setAuthModal] = useState<AuthView | null>(null)
   const [pendingSignUpEmail, setPendingSignUpEmail] = useState('')
 
+  const getIdToken = useCallback(async (): Promise<string | null> => {
+    if (!authConfigured) return null
+    try {
+      let session = await fetchAuthSession()
+      let idToken = session.tokens?.idToken?.toString()
+      if (!idToken) {
+        session = await fetchAuthSession({ forceRefresh: true })
+        idToken = session.tokens?.idToken?.toString()
+      }
+      return idToken ?? null
+    } catch {
+      return null
+    }
+  }, [authConfigured])
+
+  const syncPatientSessionAuth = useCallback(
+    (authenticated: boolean) => {
+      setPatientSessionAuth({
+        isAuthenticated: authenticated,
+        getIdToken,
+      })
+    },
+    [getIdToken],
+  )
+
   const refreshAuth = useCallback(async () => {
     if (!authConfigured) {
+      syncPatientSessionAuth(false)
       setIsAuthenticated(false)
       setEmail(null)
       setLoading(false)
@@ -73,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const session = await fetchAuthSession()
       const token = session.tokens?.idToken?.toString()
       if (!token) {
+        syncPatientSessionAuth(false)
         setIsAuthenticated(false)
         setEmail(null)
         return
@@ -84,29 +111,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : typeof payload?.['cognito:username'] === 'string'
             ? payload['cognito:username']
             : null
+      syncPatientSessionAuth(true)
       setEmail(claimEmail)
       setIsAuthenticated(true)
     } catch {
+      syncPatientSessionAuth(false)
       setIsAuthenticated(false)
       setEmail(null)
     } finally {
       setLoading(false)
     }
-  }, [authConfigured])
+  }, [authConfigured, syncPatientSessionAuth])
 
   useEffect(() => {
     void refreshAuth()
   }, [refreshAuth])
-
-  const getIdToken = useCallback(async (): Promise<string | null> => {
-    if (!authConfigured) return null
-    try {
-      const session = await fetchAuthSession()
-      return session.tokens?.idToken?.toString() ?? null
-    } catch {
-      return null
-    }
-  }, [authConfigured])
 
   useEffect(() => {
     setPatientSessionAuth({
@@ -123,9 +142,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Additional sign-in steps are not supported in this app.')
     }
     clearPrivatePatientCache()
+    syncPatientSessionAuth(true)
     await refreshAuth()
     setAuthModal(null)
-  }, [refreshAuth])
+  }, [refreshAuth, syncPatientSessionAuth])
 
   const signUpWithPassword = useCallback(async (rawEmail: string, password: string) => {
     configureAmplifyAuth()
@@ -176,9 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     clearPrivatePatientCache()
+    syncPatientSessionAuth(false)
     setIsAuthenticated(false)
     setEmail(null)
-  }, [authConfigured])
+  }, [authConfigured, syncPatientSessionAuth])
 
   const value = useMemo(
     (): AuthContextValue => ({

@@ -22,7 +22,9 @@ GENERATION_INSTRUCTIONS = (
     "6th grade reading level without emojis. Address the user directly. Do not use third-person "
     "pronouns for the user. Do not invent sources or clinical facts that are not in the context."
     "Express your answers in an educational format and only give suggestions, and word it as "
-    "lifestyle advice and not medical."
+    "lifestyle advice and not medical. Even if the question has been asked before,"
+    "answer it again without saying that you have already answered it. Do not be"
+    " passive aggressive."
 )
 
 CONCISE_GENERAL_SUFFIX = (
@@ -46,7 +48,8 @@ METRICS_MODE_INSTRUCTIONS = (
     "imply a care plan. If they ask for advice about their data, briefly summarize relevant "
     "logs and suggest they use Learn mode for general education or talk with their care team. "
     "Organize the response at a 6th grade reading level without emojis. Address the user "
-    "directly. Do not invent log entries or numbers not in the metrics block."
+    "directly. Do not invent log entries or numbers not in the metrics block. Even if the question has been asked before,"
+    "answer it again without saying that you have already answered it."
 )
 
 CONCISE_METRICS_SUFFIX = (

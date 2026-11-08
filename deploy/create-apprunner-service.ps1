@@ -64,13 +64,37 @@ if ($Kb -match '["'']') {
     Write-Error "BEDROCK_KNOWLEDGE_BASE_ID in .env must not include quote characters. Use: BEDROCK_KNOWLEDGE_BASE_ID=$Kb"
 }
 
+Write-Host "Ensuring ECR repository '$Repo' exists..."
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+aws ecr describe-repositories --region $Region --repository-names $Repo *> $null
+$ecrExists = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevErrorAction
+if (-not $ecrExists) {
+    Write-Host "Creating ECR repository '$Repo'..."
+    aws ecr create-repository --region $Region --repository-name $Repo | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to create ECR repository '$Repo'."
+    }
+    Write-Host "Created ECR repository '$Repo'."
+}
+
 Write-Host "Logging in to ECR..."
 aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin "$Account.dkr.ecr.$Region.amazonaws.com"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "ECR docker login failed."
+}
 
 Write-Host "Building image..."
 docker build -t "${Repo}:main" .
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "docker build failed."
+}
 docker tag "${Repo}:main" $ImageUri
 docker push $ImageUri
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "docker push failed. App Runner was NOT updated with a new image."
+}
 
 $RuntimeEnv = @{
     AWS_REGION                    = $Region

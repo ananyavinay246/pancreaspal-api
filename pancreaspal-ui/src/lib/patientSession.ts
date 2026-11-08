@@ -38,9 +38,10 @@ export function clearPrivatePatientCache(): void {
 
 /** Returns patient_id for the current guest or signed-in user. */
 export async function ensurePatientId(): Promise<string> {
-  const { isAuthenticated } = getPatientSessionAuth()
+  const { isAuthenticated, getIdToken } = getPatientSessionAuth()
+  const token = await getIdToken()
 
-  if (isAuthenticated) {
+  if (isAuthenticated || token) {
     if (privatePatientId) return privatePatientId
     if (!privatePatientPromise) {
       privatePatientPromise = fetchMe().then((me) => {

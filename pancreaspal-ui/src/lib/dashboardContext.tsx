@@ -21,6 +21,7 @@ type DashboardContextValue = {
   loading: boolean
   error: string | null
   refetch: (refresh?: boolean) => Promise<void>
+  clearPatientData: () => void
 }
 
 const DashboardContext = createContext<DashboardContextValue | null>(null)
@@ -30,7 +31,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const clearPatientData = useCallback(() => {
+    setDashboard(null)
+    setError(null)
+    setLoading(true)
+  }, [])
+
   const refetch = useCallback(async (refresh = false) => {
+    setLoading(true)
     setError(null)
     try {
       let patientId = await ensurePatientId()
@@ -72,8 +80,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [refetch])
 
   const value = useMemo(
-    () => ({ dashboard, loading, error, refetch }),
-    [dashboard, loading, error, refetch],
+    () => ({ dashboard, loading, error, refetch, clearPatientData }),
+    [dashboard, loading, error, refetch, clearPatientData],
   )
 
   return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>

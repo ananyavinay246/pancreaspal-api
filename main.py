@@ -13,6 +13,7 @@ from auth import (
     AuthUser,
     auth_enabled,
     authorize_patient_id,
+    demo_patient_id,
     get_optional_user,
     get_required_user,
 )
@@ -61,6 +62,11 @@ try:
     dashboard_service = DashboardService(metrics_service=health_metrics_service)
 except Exception as e:
     raise RuntimeError(f"FATAL: Failed to initialize services. Application cannot start. Error: {e}")
+
+if auth_enabled() and not demo_patient_id():
+    logging.warning(
+        "AUTH_ENABLED is true but DEMO_PATIENT_ID is unset. Guest chat and metrics will fail until it is set."
+    )
 
 
 def _access_patient(

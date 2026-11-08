@@ -476,9 +476,9 @@ function MiniMetricCard({
 
 // ─── AI Ask Card ──────────────────────────────────────────────────────────────
 const suggestions = [
-  "Why did I spike after lunch?",
-  "How was my range this week?",
-  "When do I usually go low?",
+  "What is carb counting in simple terms?",
+  "How does exercise affect blood sugar?",
+  "How were my glucose readings over the last two weeks?",
 ]
 
 type HomeAskMode = QueryMode | "doctor_visit"
@@ -1385,6 +1385,7 @@ function ChatSourceLinks({ sources }: { sources: SourceDocument[] }) {
 
 // ─── History Page ─────────────────────────────────────────────────────────────
 function HistoryPage() {
+  const { isAuthenticated, loading: authLoading } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -1414,7 +1415,10 @@ function HistoryPage() {
   }, [])
 
   useEffect(() => {
+    if (authLoading) return
     let cancelled = false
+    setConversations([])
+    setActiveId(null)
     ;(async () => {
       setLoading(true)
       setLoadError(null)
@@ -1433,7 +1437,7 @@ function HistoryPage() {
     return () => {
       cancelled = true
     }
-  }, [loadConversations])
+  }, [loadConversations, isAuthenticated, authLoading])
 
   useEffect(() => {
     setPendingDetail(null)
