@@ -18,6 +18,7 @@ type Props = {
 export function AuthModal({ view, onClose }: Props) {
   const auth = useAuth()
   const [email, setEmail] = useState(auth.pendingSignUpEmail || auth.email || '')
+  const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -40,7 +41,7 @@ export function AuthModal({ view, onClose }: Props) {
       if (view === 'signIn') {
         await auth.signInWithPassword(email, password)
       } else if (view === 'signUp') {
-        await auth.signUpWithPassword(email, password)
+        await auth.signUpWithPassword(email, password, displayName)
       } else if (view === 'confirmSignUp') {
         await auth.confirmSignUpCode(code)
       } else if (view === 'forgotPassword') {
@@ -101,6 +102,25 @@ export function AuthModal({ view, onClose }: Props) {
         )}
 
         <form onSubmit={submit} className="flex flex-col gap-3">
+          {view === 'signUp' && (
+            <label className="flex flex-col gap-1">
+              <span style={{ color: T.muted }} className="text-xs font-700">
+                What do you want to be called?
+              </span>
+              <input
+                type="text"
+                required
+                maxLength={64}
+                autoComplete="nickname"
+                value={displayName}
+                onChange={(ev) => setDisplayName(ev.target.value)}
+                placeholder="Your first name or nickname"
+                style={{ borderColor: T.border, color: T.fg }}
+                className="border rounded-xl px-3 py-2 text-sm"
+              />
+            </label>
+          )}
+
           {(view === 'signIn' || view === 'signUp' || view === 'forgotPassword') && (
             <label className="flex flex-col gap-1">
               <span style={{ color: T.muted }} className="text-xs font-700">

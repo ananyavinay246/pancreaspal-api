@@ -26,6 +26,9 @@ import { ensurePatientId } from "./lib/patientSession"
 import { AuthProvider, useAuth } from "./lib/authContext"
 import { AuthModal } from "./lib/AuthModal"
 import { AuthSessionSync } from "./lib/AuthSessionSync"
+import { ProfileSetupModal } from "./lib/ProfileSetupModal"
+import { SettingsPage } from "./lib/SettingsPage"
+import { UserProfileProvider, useUserProfile } from "./lib/userProfileContext"
 import { ChatMarkdown } from "./lib/ChatMarkdown"
 import { DetailThreadBanner, type DetailChoice } from "./lib/DetailThreadBanner"
 import {
@@ -103,8 +106,16 @@ function Badge({
 // ─── Pancreas icon ────────────────────────────────────────────────────────────
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) {
-  const links = ["Home", "History", "Insights"]
   const auth = useAuth()
+  const { profile } = useUserProfile()
+  const links = auth.isAuthenticated
+    ? ["Home", "History", "Insights", "Settings"]
+    : ["Home", "History", "Insights"]
+  const avatarInitial = (() => {
+    const fromName = (profile?.display_name ?? "").trim()[0]
+    if (fromName) return fromName.toUpperCase()
+    return auth.userInitial
+  })()
   return (
     <header
       style={{ backgroundColor: T.card, borderBottom: `1px solid ${T.border}` }}
@@ -170,7 +181,9 @@ function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) 
               >
                 Sign out
               </button>
-              <div
+              <button
+                type="button"
+                onClick={() => setPage("Settings")}
                 style={{
                   width: 32,
                   height: 32,
@@ -178,13 +191,14 @@ function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) 
                   backgroundColor: T.sage + "30",
                   border: `2px solid ${T.sage}`,
                 }}
-                className="flex items-center justify-center"
-                title={auth.email ?? undefined}
+                className="flex items-center justify-center cursor-pointer"
+                title={profile?.display_name?.trim() || auth.email || "Settings"}
+                aria-label="Open settings"
               >
                 <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
-                  {auth.userInitial}
+                  {avatarInitial}
                 </span>
-              </div>
+              </button>
             </>
           )}
           {!auth.authConfigured && (
@@ -1007,8 +1021,14 @@ function HomePage({
   onInsight: (section: string) => void
   onOpenDoctorVisit: () => void
 }) {
+  const auth = useAuth()
+  const { profile } = useUserProfile()
   const { dashboard, loading } = useDashboard()
   const home = dashboard?.home
+  const greetingName =
+    auth.isAuthenticated && (profile?.display_name ?? "").trim()
+      ? (profile?.display_name ?? "").trim()
+      : "Maya"
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -1043,7 +1063,7 @@ function HomePage({
             style={{ color: T.fg, lineHeight: 1.15 }}
             className="text-4xl font-800 tracking-tight"
           >
-            {greeting}, Maya.
+            {greeting}, {greetingName}.
           </h1>
           <p style={{ color: T.muted }} className="text-sm font-500 mt-1">
             Here's how your day is looking so far.
@@ -4350,6 +4370,7 @@ function AppShell() {
       {auth.authModal && (
         <AuthModal view={auth.authModal} onClose={auth.closeAuth} />
       )}
+      <ProfileSetupModal />
       <Nav page={navHighlight} setPage={handleNavChange} />
       {page === "Home" && (
         <HomePage
@@ -4372,6 +4393,7 @@ function AppShell() {
       )}
       {page === "History"  && <><DemoBanner /><HistoryPage /></>}
       {page === "Insights" && <><DemoBanner /><InsightsPage initialSection={insightSection} /></>}
+      {page === "Settings" && <SettingsPage />}
       {showFooter && <AppFooter />}
     </div>
   )
@@ -4380,10 +4402,12 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <DashboardProvider>
-        <AuthSessionSync />
-        <AppShell />
-      </DashboardProvider>
+      <UserProfileProvider>
+        <DashboardProvider>
+          <AuthSessionSync />
+          <AppShell />
+        </DashboardProvider>
+      </UserProfileProvider>
     </AuthProvider>
   )
 }

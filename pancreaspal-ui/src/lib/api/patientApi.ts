@@ -71,6 +71,7 @@ function apiUrl(path: string): string {
 export type MeResponse = {
   email: string | null
   patient_id: string
+  display_name: string | null
   is_demo: boolean
 }
 
@@ -83,6 +84,16 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
 
 export async function fetchMe(): Promise<MeResponse> {
   const res = await apiFetch('/api/v1/me')
+  if (!res.ok) throw await parseError(res)
+  return (await res.json()) as MeResponse
+}
+
+export async function updateMyProfile(body: { display_name: string }): Promise<MeResponse> {
+  const res = await apiFetch('/api/v1/me/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!res.ok) throw await parseError(res)
   return (await res.json()) as MeResponse
 }

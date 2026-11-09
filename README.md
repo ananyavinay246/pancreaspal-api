@@ -405,7 +405,7 @@ Update IAM role `pancreaspal-apprunner-instance` with [`deploy/apprunner-instanc
 
 **Amplify build env:** `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`, `VITE_COGNITO_REGION` (plus existing `VITE_API_URL` and `VITE_DEMO_PATIENT_ID`).
 
-**API:** `GET /api/v1/me` (Bearer ID token) returns `{ email, patient_id, is_demo: false }`. `POST /api/v1/patients/init` returns **403** when `AUTH_ENABLED=true`.
+**API:** `GET /api/v1/me` (Bearer ID token) returns `{ email, patient_id, display_name, is_demo: false }`. `PATCH /api/v1/me/profile` updates `display_name` (stored in DynamoDB user map, not Cognito). `POST /api/v1/patients/init` returns **403** when `AUTH_ENABLED=true`.
 
 Local dev without Cognito: leave `AUTH_ENABLED` unset/false and omit `VITE_COGNITO_*` — behavior matches the pre-login app.
 

@@ -21,6 +21,7 @@ import {
 import { configureAmplifyAuth, isAuthConfigured } from './authConfig'
 import { clearPrivatePatientCache } from './patientSession'
 import { setPatientSessionAuth } from './patientSessionAuth'
+import { setPendingDisplayName } from './pendingDisplayName'
 
 export type AuthView = 'signIn' | 'signUp' | 'confirmSignUp' | 'forgotPassword' | 'confirmReset'
 
@@ -35,7 +36,7 @@ type AuthContextValue = {
   openAuth: (view?: AuthView) => void
   closeAuth: () => void
   signInWithPassword: (email: string, password: string) => Promise<void>
-  signUpWithPassword: (email: string, password: string) => Promise<SignUpOutput>
+  signUpWithPassword: (email: string, password: string, displayName: string) => Promise<SignUpOutput>
   confirmSignUpCode: (code: string) => Promise<void>
   forgotPassword: (email: string) => Promise<void>
   confirmForgotPassword: (code: string, newPassword: string) => Promise<void>
@@ -147,9 +148,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthModal(null)
   }, [refreshAuth, syncPatientSessionAuth])
 
-  const signUpWithPassword = useCallback(async (rawEmail: string, password: string) => {
+  const signUpWithPassword = useCallback(async (rawEmail: string, password: string, displayName: string) => {
     configureAmplifyAuth()
     const emailNorm = rawEmail.trim().toLowerCase()
+    const name = displayName.trim()
+    if (!name) throw new Error('Please enter what you want to be called.')
+    setPendingDisplayName(name)
     const out = await signUp({
       username: emailNorm,
       password,

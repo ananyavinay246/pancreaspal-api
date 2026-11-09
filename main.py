@@ -319,7 +319,23 @@ class ListConversationsResponse(BaseModel):
 class MeResponse(BaseModel):
     email: str | None
     patient_id: str
+    display_name: str | None = None
     is_demo: bool = False
+
+
+class MeProfileUpdateRequest(BaseModel):
+    display_name: str = Field(..., description="Name shown in the app greeting and profile.")
+
+
+def _me_response_for_user(user: AuthUser) -> MeResponse:
+    patient_id = user_patient_service.get_or_create_patient_for_sub(user.sub, user.email)
+    display_name = user_patient_service.get_display_name(user.sub)
+    return MeResponse(
+        email=user.email,
+        patient_id=patient_id,
+        display_name=display_name,
+        is_demo=False,
+    )
 
 # --- API Endpoints ---
 
@@ -348,8 +364,23 @@ async def get_current_user_profile(user: AuthUser = Depends(get_required_user)):
     """Return the signed-in user's linked patient_id (creates one on first login)."""
     if not auth_enabled():
         raise HTTPException(status_code=501, detail="Authentication is not enabled on this server.")
-    patient_id = user_patient_service.get_or_create_patient_for_sub(user.sub, user.email)
-    return MeResponse(email=user.email, patient_id=patient_id, is_demo=False)
+    return _me_response_for_user(user)
+
+
+@app.patch("/api/v1/me/profile", response_model=MeResponse)
+async def update_current_user_profile(
+    request: MeProfileUpdateRequest,
+    user: AuthUser = Depends(get_required_user),
+):
+    """Update profile fields stored for the signed-in user (not Cognito email)."""
+    if not auth_enabled():
+        raise HTTPException(status_code=501, detail="Authentication is not enabled on this server.")
+    user_patient_service.get_or_create_patient_for_sub(user.sub, user.email)
+    try:
+        user_patient_service.set_display_name(user.sub, request.display_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _me_response_for_user(user)
 
 
 @app.post("/api/v1/patients/{patient_id}/append", response_model=AppendHistoryResponse)
