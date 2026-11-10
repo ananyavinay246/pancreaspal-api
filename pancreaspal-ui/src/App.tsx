@@ -103,9 +103,23 @@ function Badge({
   )
 }
 
-// ─── Pancreas icon ────────────────────────────────────────────────────────────
 // ─── Nav ──────────────────────────────────────────────────────────────────────
-function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) {
+const NAV_ICONS: Record<string, string> = {
+  Home: "⌂",
+  History: "☰",
+  Insights: "◈",
+  Settings: "⚙",
+}
+
+function Nav({
+  page,
+  setPage,
+  showBottomTabs,
+}: {
+  page: string
+  setPage: (p: string) => void
+  showBottomTabs: boolean
+}) {
   const auth = useAuth()
   const { profile } = useUserProfile()
   const links = auth.isAuthenticated
@@ -117,109 +131,160 @@ function Nav({ page, setPage }: { page: string; setPage: (p: string) => void }) 
     return auth.userInitial
   })()
   return (
-    <header
-      style={{ backgroundColor: T.card, borderBottom: `1px solid ${T.border}` }}
-      className="sticky top-0 z-20 w-full"
-    >
-      <div className="max-w-6xl mx-auto px-8 flex items-center justify-between h-14">
-        <div className="flex items-center gap-2.5">
-          <img
-            src="https://img.icons8.com/?size=160&id=r6wPlJYCWM3W&format=png"
-            alt="pancreas"
-            style={{ width: 28, height: 28, objectFit: "contain" }}
-          />
-          <span
-            style={{ color: T.fg }}
-            className="font-800 text-base tracking-tight"
+    <>
+      <header
+        style={{
+          backgroundColor: T.card,
+          borderBottom: `1px solid ${T.border}`,
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+        className="sticky top-0 z-20 w-full"
+      >
+        <div className="max-w-6xl mx-auto page-pad flex items-center justify-between h-14 gap-2">
+          <button
+            type="button"
+            onClick={() => setPage("Home")}
+            className="flex items-center gap-2 min-w-0 cursor-pointer"
+            aria-label="Go to Home"
           >
-            Pancreas Pal
-          </span>
-        </div>
-        <nav className="flex items-center gap-1">
-          {links.map((l) => (
-            <button
-              key={l}
-              onClick={() => setPage(l)}
-              style={{
-                color: page === l ? T.sage : T.muted,
-                backgroundColor: page === l ? T.sage + "15" : "transparent",
-              }}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-700 tracking-wide transition-colors duration-150 cursor-pointer"
+            <img
+              src="https://img.icons8.com/?size=160&id=r6wPlJYCWM3W&format=png"
+              alt=""
+              style={{ width: 28, height: 28, objectFit: "contain" }}
+            />
+            <span
+              style={{ color: T.fg }}
+              className="font-800 text-base tracking-tight truncate"
             >
-              {l}
-            </button>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3">
-          {auth.authConfigured && !auth.isAuthenticated && (
-            <>
+              Pancreas Pal
+            </span>
+          </button>
+          {/* Desktop primary links */}
+          <nav className="hidden md:flex items-center gap-1">
+            {links.map((l) => (
               <button
+                key={l}
                 type="button"
-                onClick={() => auth.openAuth("signIn")}
-                style={{ color: T.muted }}
-                className="text-xs font-700 cursor-pointer hidden sm:inline"
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                onClick={() => auth.openAuth("signUp")}
-                style={{ backgroundColor: T.sage, color: "#fff" }}
-                className="text-xs font-800 px-3 py-1.5 rounded-lg cursor-pointer"
-              >
-                Create account
-              </button>
-            </>
-          )}
-          {auth.authConfigured && auth.isAuthenticated && (
-            <>
-              <button
-                type="button"
-                onClick={() => void auth.signOutUser()}
-                style={{ color: T.muted }}
-                className="text-xs font-700 cursor-pointer"
-              >
-                Sign out
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage("Settings")}
+                onClick={() => setPage(l)}
                 style={{
-                  width: 32,
-                  height: 32,
+                  color: page === l ? T.sage : T.muted,
+                  backgroundColor: page === l ? T.sage + "15" : "transparent",
+                }}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-700 tracking-wide transition-colors duration-150 cursor-pointer"
+              >
+                {l}
+              </button>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {auth.authConfigured && !auth.isAuthenticated && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => auth.openAuth("signIn")}
+                  style={{ color: T.muted }}
+                  className="text-xs font-700 cursor-pointer hidden sm:inline min-h-10 px-2"
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => auth.openAuth("signUp")}
+                  style={{ backgroundColor: T.sage, color: "#fff" }}
+                  className="text-xs font-800 px-3 py-2 rounded-lg cursor-pointer min-h-10"
+                >
+                  Create account
+                </button>
+              </>
+            )}
+            {auth.authConfigured && auth.isAuthenticated && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void auth.signOutUser()}
+                  style={{ color: T.muted }}
+                  className="text-xs font-700 cursor-pointer hidden md:inline min-h-10 px-2"
+                >
+                  Sign out
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPage("Settings")}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    backgroundColor: T.sage + "30",
+                    border: `2px solid ${T.sage}`,
+                  }}
+                  className="flex items-center justify-center cursor-pointer"
+                  title={profile?.display_name?.trim() || auth.email || "Settings"}
+                  aria-label="Open settings"
+                >
+                  <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
+                    {avatarInitial}
+                  </span>
+                </button>
+              </>
+            )}
+            {!auth.authConfigured && (
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
                   borderRadius: "50%",
                   backgroundColor: T.sage + "30",
                   border: `2px solid ${T.sage}`,
                 }}
-                className="flex items-center justify-center cursor-pointer"
-                title={profile?.display_name?.trim() || auth.email || "Settings"}
-                aria-label="Open settings"
+                className="flex items-center justify-center"
               >
                 <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
-                  {avatarInitial}
+                  M
                 </span>
-              </button>
-            </>
-          )}
-          {!auth.authConfigured && (
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                backgroundColor: T.sage + "30",
-                border: `2px solid ${T.sage}`,
-              }}
-              className="flex items-center justify-center"
-            >
-              <span style={{ color: T.sage, fontSize: 13 }} className="font-800">
-                M
-              </span>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {showBottomTabs && (
+        <nav
+          style={{
+            backgroundColor: T.card,
+            borderTop: `1px solid ${T.border}`,
+            paddingBottom: "env(safe-area-inset-bottom)",
+          }}
+          className="md:hidden fixed bottom-0 inset-x-0 z-30"
+          aria-label="Primary"
+        >
+          <div className="flex items-stretch justify-around max-w-lg mx-auto">
+            {links.map((l) => {
+              const active = page === l
+              return (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setPage(l)}
+                  style={{ color: active ? T.sage : T.muted }}
+                  className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 cursor-pointer"
+                >
+                  <span
+                    style={{
+                      backgroundColor: active ? T.sage + "18" : "transparent",
+                      color: active ? T.sage : T.muted,
+                    }}
+                    className="w-9 h-7 rounded-lg flex items-center justify-center text-sm font-700"
+                  >
+                    {NAV_ICONS[l] ?? "•"}
+                  </span>
+                  <span className="text-[10px] font-700 tracking-wide">{l}</span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+      )}
+    </>
   )
 }
 
@@ -479,7 +544,10 @@ function MiniMetricCard({
       <div className="flex items-center justify-between">
         <p style={{ color: T.muted }} className="text-xs font-500 leading-relaxed">{sublabel}</p>
         {onClick && (
-          <span style={{ color, opacity: 0 }} className="text-xs font-700 shrink-0 ml-2 transition-opacity duration-150 group-hover:opacity-100">
+          <span
+            style={{ color }}
+            className="text-xs font-700 shrink-0 ml-2 opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150"
+          >
             View →
           </span>
         )}
@@ -605,10 +673,11 @@ function AskCard({
           }
           disabled={mode === "doctor_visit"}
           style={{ color: T.fg, backgroundColor: "transparent", outline: "none", flex: 1, fontFamily: "Nunito,sans-serif" }}
-          className="text-sm font-500 placeholder:text-[#B8B2AA]" />
+          className="text-base sm:text-sm font-500 placeholder:text-[#B8B2AA]" />
         <button onClick={submit}
+          type="button"
           style={{ backgroundColor: val.trim() ? T.sage : T.border, transition: "background-color 0.15s ease" }}
-          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer">
+          className="w-10 h-10 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M2 7h10M7 2l5 5-5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -891,15 +960,16 @@ function FAB() {
   return (
     <>
       {activeModal && <LogModal metricId={activeModal} onClose={() => setActiveModal(null)} />}
-      <div className="flex items-center gap-3 justify-end">
+      <div className="flex flex-col-reverse sm:flex-row items-end sm:items-center gap-3 justify-end">
         {open && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             {actions.map((a) => (
               <button
                 key={a.label}
+                type="button"
                 onClick={() => { setOpen(false); setActiveModal(a.metricId) }}
                 style={{ backgroundColor: a.color + "18", color: a.color, border: `1.5px solid ${a.color}44` }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-700 cursor-pointer transition-all duration-150"
+                className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 rounded-full text-xs font-700 cursor-pointer transition-all duration-150 min-h-11"
               >
                 <span className="text-sm leading-none">{a.icon}</span>
                 {a.label}
@@ -908,7 +978,10 @@ function FAB() {
           </div>
         )}
       <button
+        type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={open ? "Close log menu" : "Log a metric"}
         style={{
           backgroundColor: open ? T.fgSoft : T.sage,
           boxShadow: open
@@ -917,7 +990,7 @@ function FAB() {
           transform: open ? "rotate(45deg)" : "rotate(0deg)",
           transition: "all 0.2s ease",
         }}
-        className="w-12 h-12 rounded-full flex items-center justify-center cursor-pointer"
+        className="w-14 h-14 sm:w-12 sm:h-12 rounded-full flex items-center justify-center cursor-pointer shrink-0"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path
@@ -958,7 +1031,7 @@ function DemoBanner() {
 // ─── Home Page ────────────────────────────────────────────────────────────────
 function DoctorVisitPlaceholderPage({ onBack }: { onBack: () => void }) {
   return (
-    <main className="max-w-2xl mx-auto px-8 py-16 flex flex-col items-center text-center gap-6">
+    <main className="max-w-2xl mx-auto page-pad py-12 sm:py-16 flex flex-col items-center text-center gap-6">
       <DemoBanner />
       <div
         style={{
@@ -1048,7 +1121,7 @@ function HomePage({
   const moodVal = home?.mood.label && home.mood.value > 0 ? home.mood.label : "—"
 
   return (
-    <main className="max-w-6xl mx-auto px-8 pt-3 pb-10 flex flex-col gap-10">
+    <main className="max-w-6xl mx-auto page-pad pt-3 pb-10 flex flex-col gap-8 sm:gap-10">
       <DemoBanner />
       {loading && !dashboard && (
         <p style={{ color: T.muted }} className="text-sm font-500">Loading your dashboard…</p>
@@ -1061,7 +1134,7 @@ function HomePage({
           </p>
           <h1
             style={{ color: T.fg, lineHeight: 1.15 }}
-            className="text-4xl font-800 tracking-tight"
+            className="text-2xl sm:text-3xl md:text-4xl font-800 tracking-tight"
           >
             {greeting}, {greetingName}.
           </h1>
@@ -1106,13 +1179,7 @@ function HomePage({
 
       {/* ── Metric Cards + FAB ────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, 1fr)",
-            gap: 16,
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
           <MiniMetricCard
             label="Glucose"
             value={glucoseVal}
@@ -1408,6 +1475,7 @@ function HistoryPage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [searchFocused, setSearchFocused] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -1605,38 +1673,30 @@ function HistoryPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-8 py-10">
+      <div className="max-w-6xl mx-auto page-pad py-10">
         <p style={{ color: T.muted }} className="text-sm font-500">Loading conversation history…</p>
       </div>
     )
   }
   if (loadError) {
     return (
-      <div className="max-w-6xl mx-auto px-8 py-10">
+      <div className="max-w-6xl mx-auto page-pad py-10">
         <p style={{ color: T.rose }} className="text-sm font-600">{loadError}</p>
       </div>
     )
   }
 
   return (
-    <div
-      style={{
-        height: "calc(100dvh - 56px)",
-        display: "flex",
-        overflow: "hidden",
-      }}
-    >
+    <div className="fullscreen-below-nav flex overflow-hidden">
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside
         style={{
-          width: 300,
           borderRight: `1px solid ${T.border}`,
           backgroundColor: T.card,
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          overflow: "hidden",
         }}
+        className={`flex flex-col shrink-0 overflow-hidden w-full md:w-[300px] ${
+          mobileThreadOpen ? "hidden md:flex" : "flex"
+        }`}
       >
         {/* Sidebar header */}
         <div
@@ -1728,7 +1788,11 @@ function HistoryPage() {
                   return (
                     <button
                       key={c.id}
-                      onClick={() => setActiveId(c.id)}
+                      type="button"
+                      onClick={() => {
+                        setActiveId(c.id)
+                        setMobileThreadOpen(true)
+                      }}
                       style={{
                         backgroundColor: isActive
                           ? T.sage + "14"
@@ -1741,15 +1805,7 @@ function HistoryPage() {
                         textAlign: "left",
                         transition: "all 0.15s ease",
                       }}
-                      className="flex flex-col gap-1 px-3 py-2.5 mb-0.5 cursor-pointer hover:bg-[#F2EDE8] transition-colors duration-150"
-                      onMouseEnter={(e) => {
-                        if (!isActive)
-                          e.currentTarget.style.backgroundColor = "#F2EDE8"
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive)
-                          e.currentTarget.style.backgroundColor = "transparent"
-                      }}
+                      className="flex flex-col gap-1 px-3 py-3 mb-0.5 cursor-pointer hover:bg-[#F2EDE8] transition-colors duration-150 min-h-11"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span
@@ -1782,13 +1838,10 @@ function HistoryPage() {
 
       {/* ── Conversation view ────────────────────────────────────────── */}
       <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          backgroundColor: T.bg,
-        }}
+        style={{ backgroundColor: T.bg }}
+        className={`flex-1 flex-col overflow-hidden ${
+          mobileThreadOpen ? "flex" : "hidden md:flex"
+        }`}
       >
         {!active ? (
           <div className="flex-1 flex items-center justify-center p-8">
@@ -1803,21 +1856,35 @@ function HistoryPage() {
           style={{
             backgroundColor: T.card,
             borderBottom: `1px solid ${T.border}`,
-            padding: "14px 28px",
           }}
-          className="flex items-center justify-between shrink-0"
+          className="flex items-center justify-between shrink-0 gap-2 px-4 sm:px-7 py-3.5"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileThreadOpen(false)}
+              style={{
+                backgroundColor: T.bg,
+                border: `1px solid ${T.border}`,
+                color: T.fgSoft,
+              }}
+              className="md:hidden flex items-center justify-center w-10 h-10 rounded-xl shrink-0 cursor-pointer"
+              aria-label="Back to conversation list"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M8 1L3 6l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
             <span
               style={{ backgroundColor: T.sage + "20" }}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0"
             >
               ✦
             </span>
-            <div>
+            <div className="min-w-0">
               <p
                 style={{ color: T.fg }}
-                className="text-sm font-800 leading-tight"
+                className="text-sm font-800 leading-tight truncate"
               >
                 {active.title}
               </p>
@@ -1831,8 +1898,8 @@ function HistoryPage() {
 
         {/* Messages */}
         <div
-          style={{ flex: 1, overflowY: "auto", padding: "28px 28px 8px" }}
-          className="flex flex-col gap-5"
+          style={{ flex: 1, overflowY: "auto" }}
+          className="flex flex-col gap-5 px-4 sm:px-7 py-5 sm:py-7 pb-2"
         >
           {active.messages.map((msg, i) =>
             msg.role === "detail-offer" ? (
@@ -2249,10 +2316,24 @@ function LogModal({ metricId, onClose }: { metricId: string; onClose: () => void
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(61,56,48,0.35)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onClose}>
-      <div style={{ backgroundColor: T.card, borderRadius: 20, width: "100%", maxWidth: 480, maxHeight: "90dvh", overflowY: "auto", boxShadow: "0 8px 48px rgba(61,56,48,0.18)" }}
-        onClick={e => e.stopPropagation()}>
+    <div
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(61,56,48,0.35)", zIndex: 50 }}
+      className="flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: T.card,
+          width: "100%",
+          maxWidth: 480,
+          maxHeight: "92dvh",
+          overflowY: "auto",
+          boxShadow: "0 8px 48px rgba(61,56,48,0.18)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+        className="rounded-t-2xl sm:rounded-2xl"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div style={{ borderBottom: `1px solid ${T.border}`, padding: "18px 24px 14px" }} className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -2284,7 +2365,7 @@ function LogModal({ metricId, onClose }: { metricId: string; onClose: () => void
                     placeholder={f.placeholder ?? ""}
                     min={f.min} max={f.max} step={f.step}
                     style={{ flex: 1, backgroundColor: "transparent", outline: "none", color: T.fg, fontFamily: "Nunito,sans-serif", padding: "10px 12px" }}
-                    className="text-sm font-500 placeholder:text-[#C0BAB2]" />
+                    className="text-base sm:text-sm font-500 placeholder:text-[#C0BAB2]" />
                   {f.unit && <span style={{ color: T.muted, paddingRight: 12 }} className="text-xs font-600 shrink-0">{f.unit}</span>}
                 </div>
               )}
@@ -2342,25 +2423,27 @@ function InsightSection({
 }) {
   const [modalOpen, setModalOpen] = useState(false)
   return (
-    <section id={id} className="flex flex-col gap-5" style={{ scrollMarginTop: 72 }}>
-      <div className="flex items-center justify-between pb-3" style={{ borderBottom: `2px solid ${color}30` }}>
-        <div className="flex items-center gap-3">
+    <section id={id} className="flex flex-col gap-5 min-w-0" style={{ scrollMarginTop: 72 }}>
+      <div className="flex items-center justify-between gap-3 pb-3" style={{ borderBottom: `2px solid ${color}30` }}>
+        <div className="flex items-center gap-3 min-w-0">
           <span style={{ backgroundColor: color + "20", fontSize: 16 }}
-            className="w-9 h-9 rounded-xl flex items-center justify-center">{icon}</span>
-          <h2 style={{ color: T.fg }} className="text-lg font-800 tracking-tight">{label}</h2>
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0">{icon}</span>
+          <h2 style={{ color: T.fg }} className="text-lg font-800 tracking-tight truncate">{label}</h2>
         </div>
-        <button onClick={() => setModalOpen(true)}
-          style={{ backgroundColor: color + "15", color, border: `1.5px solid ${color}40`, borderRadius: 10, padding: "6px 14px", transition: "all 0.15s ease" }}
-          className="flex items-center gap-1.5 text-xs font-700 cursor-pointer"
-          onMouseEnter={e => { e.currentTarget.style.backgroundColor = color + "28" }}
-          onMouseLeave={e => { e.currentTarget.style.backgroundColor = color + "15" }}>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          style={{ backgroundColor: color + "15", color, border: `1.5px solid ${color}40`, borderRadius: 10, transition: "all 0.15s ease" }}
+          className="flex items-center gap-1.5 text-xs font-700 cursor-pointer shrink-0 min-h-10 px-3 sm:px-3.5"
+        >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
             <path d="M5.5 1v9M1 5.5h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
-          Log {label}
+          <span className="hidden sm:inline">Log {label}</span>
+          <span className="sm:hidden">Log</span>
         </button>
       </div>
-      {children}
+      <div className="min-w-0 overflow-x-touch">{children}</div>
       {modalOpen && <LogModal metricId={id} onClose={() => setModalOpen(false)} />}
     </section>
   )
@@ -2411,13 +2494,7 @@ function GlucoseInsights({ data }: { data: GlucoseInsightsBlock }) {
   return (
     <div className="flex flex-col gap-4">
       {/* Stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="stat-grid-4">
         <StatCard
           label="Avg Glucose"
           value={data.summary.avg_glucose ? String(data.summary.avg_glucose) : "—"}
@@ -2670,13 +2747,7 @@ function InsulinInsights({ data }: { data: InsulinInsightsBlock }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="stat-grid-4">
         <StatCard
           label="Avg Daily Dose"
           value={data.summary.avg_tdd ? String(data.summary.avg_tdd) : "—"}
@@ -2913,13 +2984,7 @@ function ExerciseInsights({
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="stat-grid-4">
         <StatCard
           label="Active Days"
           value={String(activeDays)}
@@ -3208,13 +3273,7 @@ function FoodInsights({
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="stat-grid-4">
         <StatCard
           label="Avg Daily Carbs"
           value={
@@ -3487,13 +3546,7 @@ function MoodInsights({
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="stat-grid-4">
         <StatCard
           label="Days Logged"
           value={String(daysLogged)}
@@ -3521,7 +3574,7 @@ function MoodInsights({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Full month calendar */}
         <div
           style={{
@@ -3529,13 +3582,13 @@ function MoodInsights({
             borderRadius: 14,
             boxShadow: "0 1px 8px rgba(61,56,48,0.07)",
           }}
-          className="p-5"
+          className="p-4 sm:p-5 min-w-0"
         >
           <p style={{ color: T.fg }} className="text-sm font-700 mb-0.5">
             {monthLabel} mood calendar
           </p>
           <p style={{ color: T.muted }} className="text-xs font-500 mb-4">
-            Hover a day to see its mood · empty = not yet logged
+            Tap a day to see its mood · empty = not yet logged
           </p>
           <div
             style={{
@@ -3805,14 +3858,14 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
 
   if (loading && !dashboard) {
     return (
-      <div className="max-w-6xl mx-auto px-8 py-10">
+      <div className="max-w-6xl mx-auto page-pad py-10">
         <p style={{ color: T.muted }} className="text-sm font-500">Loading insights…</p>
       </div>
     )
   }
   if (error && !dashboard) {
     return (
-      <div className="max-w-6xl mx-auto px-8 py-10">
+      <div className="max-w-6xl mx-auto page-pad py-10">
         <p style={{ color: T.rose }} className="text-sm font-600">{error}</p>
       </div>
     )
@@ -3820,9 +3873,34 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
   const ins = dashboard!.insights
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-10 flex gap-8">
-      {/* ── Left sticky nav ───────────────────────────────────────── */}
-      <aside style={{ width: 180, flexShrink: 0 }}>
+    <div className="max-w-6xl mx-auto page-pad py-8 sm:py-10 flex flex-col md:flex-row gap-6 md:gap-8">
+      {/* Mobile horizontal section chips */}
+      <div className="md:hidden -mx-4 px-4 overflow-x-touch">
+        <div className="flex gap-2 pb-1 min-w-max">
+          {INSIGHT_SECTIONS.map((s) => {
+            const isActive = active === s.id
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => scrollTo(s.id)}
+                style={{
+                  backgroundColor: isActive ? s.color + "18" : T.card,
+                  color: isActive ? s.color : T.muted,
+                  border: `1.5px solid ${isActive ? s.color + "55" : T.border}`,
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-xs font-700 cursor-pointer min-h-11 shrink-0"
+              >
+                <span>{s.icon}</span>
+                {s.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Desktop left sticky nav */}
+      <aside className="hidden md:block w-[180px] shrink-0">
         <div
           style={{ position: "sticky", top: 80 }}
           className="flex flex-col gap-1"
@@ -3838,6 +3916,7 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
             return (
               <button
                 key={s.id}
+                type="button"
                 onClick={() => scrollTo(s.id)}
                 style={{
                   backgroundColor: isActive ? s.color + "14" : "transparent",
@@ -3846,14 +3925,7 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
                   transition: "all 0.15s ease",
                   textAlign: "left",
                 }}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-r-xl cursor-pointer w-full"
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.backgroundColor = T.bg
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive)
-                    e.currentTarget.style.backgroundColor = "transparent"
-                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-r-xl cursor-pointer w-full min-h-11"
               >
                 <span style={{ fontSize: 14 }}>{s.icon}</span>
                 <span className="text-sm font-700">{s.label}</span>
@@ -3863,13 +3935,12 @@ function InsightsPage({ initialSection }: { initialSection?: string }) {
         </div>
       </aside>
 
-      {/* ── Main scrollable content ───────────────────────────────── */}
-      <main className="flex-1 min-w-0 flex flex-col gap-12 pb-20">
-        {/* Page title */}
+      {/* Main scrollable content */}
+      <main className="flex-1 min-w-0 flex flex-col gap-10 sm:gap-12 pb-8 md:pb-20">
         <div className="flex flex-col gap-1">
           <h1
             style={{ color: T.fg }}
-            className="text-3xl font-800 tracking-tight"
+            className="text-2xl sm:text-3xl font-800 tracking-tight"
           >
             Insights
           </h1>
@@ -4090,24 +4161,29 @@ function ActiveChatPage({
   const modeLabel = queryMode === "metrics" ? "Summarize logs" : "Learn"
 
   return (
-    <div style={{ height: "calc(100dvh - 56px)", display: "flex", flexDirection: "column", maxWidth: 760, margin: "0 auto", width: "100%" }}>
+    <div className="fullscreen-below-header flex flex-col max-w-[760px] mx-auto w-full">
 
       {/* Header */}
-      <div style={{ backgroundColor: T.card, borderBottom: `1px solid ${T.border}`, padding: "12px 24px" }}
-        className="flex items-center gap-3 shrink-0">
-        <button onClick={onBack}
-          style={{ backgroundColor: T.bg, border: `1px solid ${T.border}`, color: T.fgSoft, borderRadius: 10, padding: "6px 12px" }}
-          className="flex items-center gap-1.5 text-xs font-700 cursor-pointer hover:border-[#C8C1B8] transition-colors shrink-0">
+      <div
+        style={{ backgroundColor: T.card, borderBottom: `1px solid ${T.border}` }}
+        className="flex items-center gap-2 sm:gap-3 shrink-0 px-3 sm:px-6 py-3"
+      >
+        <button
+          type="button"
+          onClick={onBack}
+          style={{ backgroundColor: T.bg, border: `1px solid ${T.border}`, color: T.fgSoft, borderRadius: 10 }}
+          className="flex items-center gap-1.5 text-xs font-700 cursor-pointer hover:border-[#C8C1B8] transition-colors shrink-0 min-h-10 px-3"
+        >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M8 1L3 6l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Home
+          <span className="hidden sm:inline">Home</span>
         </button>
-        <div style={{ width: 1, height: 20, backgroundColor: T.border }} />
+        <div style={{ width: 1, height: 20, backgroundColor: T.border }} className="hidden sm:block" />
         <span style={{ backgroundColor: T.sage + "20" }} className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0">✦</span>
         <div className="min-w-0 flex-1">
           <p style={{ color: T.fg }} className="text-sm font-700 truncate">{initialQuestion}</p>
-          <p style={{ color: T.muted }} className="text-xs font-500">
+          <p style={{ color: T.muted }} className="text-xs font-500 truncate">
             {modeLabel} · {queryMode === "metrics" ? "Summaries only — not medical advice" : "Educational · Today"}
           </p>
         </div>
@@ -4143,7 +4219,7 @@ function ActiveChatPage({
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "28px 24px 8px" }} className="flex flex-col gap-5">
+      <div style={{ flex: 1, overflowY: "auto" }} className="flex flex-col gap-5 px-3 sm:px-6 pt-5 sm:pt-7 pb-2">
         {messages.map((msg, i) =>
           msg.role === "detail-offer" ? (
             <div key={i} className="flex justify-center py-1">
@@ -4162,7 +4238,7 @@ function ActiveChatPage({
               />
             </div>
           ) : (
-          <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+          <div key={i} className={`flex gap-2 sm:gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {msg.role === "ai" ? (
               <div style={{ backgroundColor: T.sage + "20", flexShrink: 0 }}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-sm mt-0.5">✦</div>
@@ -4172,7 +4248,7 @@ function ActiveChatPage({
                 <span style={{ color: T.sage, fontSize: 12 }} className="font-800">M</span>
               </div>
             )}
-            <div className="flex flex-col gap-1" style={{ maxWidth: "72%", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
+            <div className="flex flex-col gap-1 max-w-[88%] sm:max-w-[72%]" style={{ alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
               <div style={{
                 backgroundColor: msg.role === "ai" ? T.card : T.sage,
                 borderRadius: msg.role === "ai" ? "4px 16px 16px 16px" : "16px 4px 16px 16px",
@@ -4220,11 +4296,15 @@ function ActiveChatPage({
 
       {/* Follow-up chips */}
       {!thinking && messages.length <= 2 && (
-        <div style={{ padding: "0 24px 12px" }} className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 px-3 sm:px-6 pb-3">
           {followUps.map(f => (
-            <button key={f} onClick={() => { setInput(f) }}
+            <button
+              key={f}
+              type="button"
+              onClick={() => { setInput(f) }}
               style={{ backgroundColor: T.card, color: T.fgSoft, border: `1px solid ${T.border}`, borderRadius: 20 }}
-              className="px-3 py-1.5 text-xs font-600 cursor-pointer hover:border-[#C8C1B8] transition-colors">
+              className="px-3 py-2 text-xs font-600 cursor-pointer hover:border-[#C8C1B8] transition-colors min-h-10"
+            >
               {f}
             </button>
           ))}
@@ -4232,20 +4312,30 @@ function ActiveChatPage({
       )}
 
       {/* Input */}
-      <div style={{ padding: "12px 24px 20px", backgroundColor: T.bg, borderTop: `1px solid ${T.border}` }}>
+      <div
+        style={{
+          backgroundColor: T.bg,
+          borderTop: `1px solid ${T.border}`,
+          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        }}
+        className="px-3 sm:px-6 pt-3"
+      >
         <div style={{ backgroundColor: T.card, borderRadius: 14, border: `1.5px solid ${focused ? T.sage : T.border}`,
           boxShadow: focused ? `0 0 0 3px ${T.sage}15` : "0 1px 6px rgba(61,56,48,0.06)", transition: "all 0.15s ease" }}
-          className="flex items-center gap-3 px-4 py-3">
+          className="flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3">
           <input value={input} onChange={e => setInput(e.target.value)}
             onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             onKeyDown={e => e.key === "Enter" && send()}
             placeholder="Ask a follow-up…"
             style={{ color: T.fg, backgroundColor: "transparent", outline: "none", fontFamily: "Nunito,sans-serif", flex: 1 }}
-            className="text-sm font-500 placeholder:text-[#C0BAB2]" />
-          <button onClick={send}
+            className="text-base sm:text-sm font-500 placeholder:text-[#C0BAB2]" />
+          <button
+            type="button"
+            onClick={send}
             style={{ backgroundColor: input.trim() && !thinking && !expandingDetail ? T.sage : T.border, transition: "background-color 0.15s ease",
-              borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-            className="cursor-pointer">
+              borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            className="cursor-pointer w-10 h-10 sm:w-8 sm:h-8"
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 7h10M7 2l5 5-5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -4361,17 +4451,21 @@ function AppShell() {
   }
 
   const showFooter = page !== "History" && page !== "Chat"
+  const showBottomTabs = page !== "Chat" && page !== "DoctorVisit"
 
   const navHighlight =
     page === "Chat" || page === "DoctorVisit" ? "Home" : page
 
   return (
-    <div style={{ backgroundColor: T.bg, fontFamily: "Nunito, system-ui, sans-serif", minHeight: "100dvh" }}>
+    <div
+      style={{ backgroundColor: T.bg, fontFamily: "Nunito, system-ui, sans-serif", minHeight: "100dvh" }}
+      className={showBottomTabs ? "with-bottom-nav" : undefined}
+    >
       {auth.authModal && (
         <AuthModal view={auth.authModal} onClose={auth.closeAuth} />
       )}
       <ProfileSetupModal />
-      <Nav page={navHighlight} setPage={handleNavChange} />
+      <Nav page={navHighlight} setPage={handleNavChange} showBottomTabs={showBottomTabs} />
       {page === "Home" && (
         <HomePage
           onAsk={handleAsk}

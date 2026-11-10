@@ -72,8 +72,11 @@ export function AuthModal({ view, onClose }: Props) {
           boxShadow: '0 8px 32px rgba(61,56,48,0.12)',
           maxWidth: 400,
           width: '100%',
+          maxHeight: '92dvh',
+          overflowY: 'auto',
+          paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
         }}
-        className="p-8 flex flex-col gap-4"
+        className="p-6 sm:p-8 flex flex-col gap-4"
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id="auth-modal-title" style={{ color: T.fg }} className="text-xl font-800">

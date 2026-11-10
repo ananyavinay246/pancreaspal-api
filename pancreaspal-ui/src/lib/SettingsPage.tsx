@@ -26,7 +26,7 @@ export function SettingsPage() {
 
   if (!auth.isAuthenticated) {
     return (
-      <main className="max-w-lg mx-auto px-8 py-12">
+      <main className="max-w-lg mx-auto page-pad py-12">
         <p style={{ color: T.muted }} className="text-sm font-600">
           Sign in to view and edit your profile.
         </p>
@@ -60,9 +60,9 @@ export function SettingsPage() {
   }
 
   return (
-    <main className="max-w-lg mx-auto px-8 py-10 flex flex-col gap-8">
+    <main className="max-w-lg mx-auto page-pad py-8 sm:py-10 flex flex-col gap-8">
       <div>
-        <h1 style={{ color: T.fg }} className="text-3xl font-800 tracking-tight">
+        <h1 style={{ color: T.fg }} className="text-2xl sm:text-3xl font-800 tracking-tight">
           Settings
         </h1>
         <p style={{ color: T.muted }} className="text-sm font-500 mt-1">

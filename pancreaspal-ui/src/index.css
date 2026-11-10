@@ -31,6 +31,72 @@ html, body {
   font-family: 'Nunito', system-ui, sans-serif;
   color: #3D3830;
   -webkit-font-smoothing: antialiased;
+  /* Avoid iOS horizontal bounce from overflowing grids */
+  overflow-x: clip;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* Page gutters: tighter on phones, roomier on desktop */
+.page-pad {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+@media (min-width: 640px) {
+  .page-pad {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .page-pad {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* Space for fixed bottom tab bar on small screens */
+.with-bottom-nav {
+  padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .with-bottom-nav {
+    padding-bottom: 0;
+  }
+}
+
+.stat-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+@media (min-width: 768px) {
+  .stat-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+.overflow-x-touch {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Full-height panels under sticky header (+ bottom tabs on phones) */
+.fullscreen-below-nav {
+  height: calc(100dvh - 56px - 4.25rem - env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .fullscreen-below-nav {
+    height: calc(100dvh - 56px);
+  }
+}
+
+.fullscreen-below-header {
+  height: calc(100dvh - 56px - env(safe-area-inset-bottom));
 }
 
 ::-webkit-scrollbar { width: 0; height: 0; }
