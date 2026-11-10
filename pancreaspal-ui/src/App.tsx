@@ -540,7 +540,7 @@ function MiniMetricCard({
           </span>
         )}
       </div>
-      <div style={{ height: chartHeight }}>{chart}</div>
+      <div style={{ height: chartHeight, overflow: "hidden", minHeight: 0 }}>{chart}</div>
       <div className="flex items-center justify-between">
         <p style={{ color: T.muted }} className="text-xs font-500 leading-relaxed">{sublabel}</p>
         {onClick && (
@@ -725,6 +725,7 @@ function MoodCalendarChart({
   const [hov, setHov] = useState<number | null>(null)
   const today = new Date().getDate()
   const daysInMonth = monthFull.length
+  // 5 weeks fits the mini card; any leftover month days are clipped by design.
   const totalCells = 35
   const cells = Array.from({ length: totalCells }, (_, i) => {
     const dayNum = i - startOffset + 1
@@ -735,14 +736,24 @@ function MoodCalendarChart({
   const dayLabels = ["S", "M", "T", "W", "T", "F", "S"]
 
   return (
-    <div style={{ width: "100%" }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        minHeight: 0,
+      }}
+    >
       {/* Day-of-week headers */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 3,
-          marginBottom: 4,
+          gap: 2,
+          flexShrink: 0,
         }}
       >
         {dayLabels.map((d, i) => (
@@ -753,18 +764,23 @@ function MoodCalendarChart({
               fontWeight: 600,
               color: T.muted,
               textAlign: "center",
+              lineHeight: 1,
             }}
           >
             {d}
           </div>
         ))}
       </div>
-      {/* Grid */}
+      {/* Grid — rows share remaining height so cells never spill the card */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 3,
+          gridTemplateRows: "repeat(5, minmax(0, 1fr))",
+          gap: 2,
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
           position: "relative",
         }}
       >
@@ -772,16 +788,16 @@ function MoodCalendarChart({
           if (!cell) return <div key={i} />
           const isHov = hov === cell.dayNum
           return (
-            <div key={i} style={{ position: "relative" }}>
+            <div key={i} style={{ position: "relative", minHeight: 0, minWidth: 0 }}>
               <div
                 style={{
                   width: "100%",
-                  aspectRatio: "1",
-                  borderRadius: 4,
+                  height: "100%",
+                  borderRadius: 3,
                   backgroundColor: moodColors[cell.mood],
                   opacity: cell.mood === 0 ? 0.4 : 1,
                   cursor: cell.mood > 0 ? "pointer" : "default",
-                  transform: isHov ? "scale(1.2)" : "scale(1)",
+                  transform: isHov ? "scale(1.08)" : "scale(1)",
                   transition: "transform 0.12s ease",
                   boxShadow: isHov
                     ? `0 2px 8px ${moodColors[cell.mood]}88`
@@ -870,26 +886,32 @@ function JourneyCard({
   month: typeof journeyMonths[0]
   index: number
 }) {
+  const tilt = [-0.8, 0, 0.8][index] ?? 0
   return (
     <div
       style={{
         backgroundColor: month.bg,
         borderRadius: 20,
         border: `1.5px solid ${month.color}30`,
-        flex: 1,
-        transform: `rotate(${[-0.8, 0, 0.8][index]}deg)`,
         boxShadow: `0 4px 24px rgba(61,56,48,0.09), 0 1px 4px rgba(61,56,48,0.05)`,
         transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        ["--journey-tilt" as string]: `rotate(${tilt}deg)`,
       }}
-      className="p-6 flex flex-col gap-5 cursor-pointer hover:shadow-xl"
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.transform = "rotate(0deg) scale(1.01)")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.transform = `rotate(${[-0.8, 0, 0.8][index]}deg)`)
-      }
+      className="p-5 sm:p-6 flex flex-col gap-4 sm:gap-5 cursor-pointer hover:shadow-xl min-w-0 overflow-hidden max-md:transform-none md:transform-[var(--journey-tilt)]"
+      onMouseEnter={(e) => {
+        if (window.matchMedia("(min-width: 768px)").matches) {
+          e.currentTarget.style.transform = "rotate(0deg) scale(1.01)"
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (window.matchMedia("(min-width: 768px)").matches) {
+          e.currentTarget.style.transform = `rotate(${tilt}deg)`
+        } else {
+          e.currentTarget.style.transform = "none"
+        }
+      }}
     >
-      <div>
+      <div className="min-w-0">
         <p
           style={{ color: month.accent }}
           className="text-xs font-700 tracking-widest uppercase mb-1"
@@ -898,13 +920,13 @@ function JourneyCard({
         </p>
         <h3
           style={{ color: T.fg }}
-          className="text-2xl font-800 tracking-tight"
+          className="text-xl sm:text-2xl font-800 tracking-tight"
         >
           {month.label}
         </h3>
       </div>
-      <div style={{ height: 1, backgroundColor: month.color + "30" }} />
-      <div className="flex flex-col gap-2.5">
+      <div style={{ height: 1, backgroundColor: month.color + "30" }} className="shrink-0" />
+      <div className="flex flex-col gap-2.5 min-w-0 overflow-hidden">
         <p
           style={{ color: month.accent }}
           className="text-xs font-700 uppercase tracking-wider"
@@ -919,7 +941,7 @@ function JourneyCard({
               borderRadius: 10,
               border: `1px solid ${month.color}25`,
             }}
-            className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-150"
+            className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer transition-all duration-150 min-w-0"
             onMouseEnter={(e) =>
               (e.currentTarget.style.borderColor = month.color + "55")
             }
@@ -929,13 +951,13 @@ function JourneyCard({
           >
             <span
               style={{ color: month.color }}
-              className="text-xs leading-none shrink-0"
+              className="text-xs leading-none shrink-0 mt-0.5"
             >
               ✦
             </span>
             <p
               style={{ color: T.fgSoft }}
-              className="text-xs font-600 leading-snug"
+              className="text-xs font-600 leading-snug min-w-0 break-words"
             >
               {q}
             </p>
@@ -1282,7 +1304,7 @@ function HomePage({
             stage.
           </p>
         </div>
-        <div className="flex gap-5 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 items-stretch">
           {journeyMonths.map((m, i) => (
             <JourneyCard key={m.label} month={m} index={i} />
           ))}

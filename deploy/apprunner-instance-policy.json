@@ -36,7 +36,8 @@
       "Effect": "Allow",
       "Action": [
         "dynamodb:GetItem",
-        "dynamodb:PutItem"
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:*:table/pancreaspal-user-patients"
     },
